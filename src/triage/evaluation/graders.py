@@ -30,6 +30,9 @@ class Grade(BaseModel):
     # For an answer that names a cause on an incident with evidence: does any citation point
     # at one of the fault's documents? None when there is no such answer.
     cites_gold: bool | None
+    # The labelled category, cited to a document of the fault. The category alone can be right
+    # by way of another fault of the same category; this cannot. None without retrieval.
+    correct_citing_the_fault: bool | None
 
 
 def grade(row: Row, label: Label, *, retrieves: bool) -> Grade:
@@ -57,6 +60,10 @@ def grade(row: Row, label: Label, *, retrieves: bool) -> Grade:
         wrong_cause = False
         false_attribution = named_a_cause
 
+    correct_citing_the_fault = None
+    if retrieves and label.answerable:
+        correct_citing_the_fault = correct and bool(cites_gold)
+
     return Grade(
         scored=row.outcome == "answered",
         answerable=label.answerable,
@@ -68,4 +75,5 @@ def grade(row: Row, label: Label, *, retrieves: bool) -> Grade:
         hit=hit,
         reciprocal_rank=reciprocal_rank,
         cites_gold=cites_gold,
+        correct_citing_the_fault=correct_citing_the_fault,
     )

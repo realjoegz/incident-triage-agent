@@ -9,7 +9,9 @@ prompt again from the current code and data, and a prompt whose fingerprint has 
 means that the committed results no longer describe the code.
 """
 
+import asyncio
 import json
+import os
 from pathlib import Path
 
 from triage.llm.base import LLM, LLMRequest, LLMResponse
@@ -50,12 +52,22 @@ class Recordings:
             out.write(self._line(key, rep, response) + "\n")
 
     def compact(self) -> None:
-        """Rewrites the file in a fixed order, so that two runs of the same work diff cleanly."""
+        """Rewrites the file in a fixed order, so that two runs of the same work diff cleanly.
+
+        The new content goes to a second file that then replaces the first, so a process that
+        dies half way leaves the old file whole.
+        """
         lines = [
             self._line(key, rep, response)
             for (key, rep), response in sorted(self._responses.items())
         ]
-        self.path.write_text("".join(line + "\n" for line in lines), encoding="utf-8")
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        scratch = self.path.with_name(self.path.name + ".tmp")
+        scratch.write_text("".join(line + "\n" for line in lines), encoding="utf-8")
+        os.replace(scratch, self.path)
+
+    def responses(self) -> list[LLMResponse]:
+        return list(self._responses.values())
 
     def prune(self, keep: set[tuple[str, int]]) -> int:
         """Drops every response that the given run did not use. Returns how many went."""
@@ -118,6 +130,7 @@ class RecordingLLM:
         self._recordings = recordings
         self._budget = budget
         self._rep = rep
+        self._in_flight: dict[str, asyncio.Future[LLMResponse]] = {}
         self.used: set[tuple[str, int]] = set()
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
@@ -126,10 +139,21 @@ class RecordingLLM:
         recorded = self._recordings.get(key, self._rep)
         if recorded is not None:
             return recorded
+        # Two callers that ask for the same request at the same moment share one paid call.
+        # Without this each would pay, and only the answer recorded last would be replayed.
+        call = self._in_flight.get(key)
+        if call is None:
+            call = asyncio.ensure_future(self._pay(key, request))
+            self._in_flight[key] = call
+            call.add_done_callback(lambda _: self._in_flight.pop(key, None))
+        return await asyncio.shield(call)
+
+    async def _pay(self, key: str, request: LLMRequest) -> LLMResponse:
         self._budget.check()
         response = await self._inner.complete(request)
-        self._budget.charge(response)
+        # Recorded before it is charged: once it is in the file, nothing can lose it.
         self._recordings.put(key, self._rep, response)
+        self._budget.charge(response)
         return response
 
 

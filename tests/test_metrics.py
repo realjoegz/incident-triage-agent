@@ -24,12 +24,12 @@ NONE = BY_NAME["none-haiku"]
 def label(case_id: str, *, answerable: bool = True) -> Label:
     return Label(
         id=case_id,
-        fault_id="F04" if answerable else "N01",
+        # Each incident of these tests is of its own fault unless a test says otherwise.
+        fault_id=f"fault-of-{case_id}",
         answerable=answerable,
         category=Category.RATE_LIMITING if answerable else Category.UNKNOWN,
         doc_ids=GOLD if answerable else [],
         presentation="signature",
-        transparency="opaque" if answerable else None,
         service="payments-gateway",
     )
 
@@ -139,7 +139,13 @@ def test_citing_a_document_of_the_fault_is_graded_apart_from_naming_the_category
         False,
         None,
     )
-    assert cited_wrong.correct
+    # The category is right either way. Only one of the two got there by the fault's document.
+    assert (cited_right.correct, cited_wrong.correct) == (True, True)
+    assert (cited_right.correct_citing_the_fault, cited_wrong.correct_citing_the_fault) == (
+        True,
+        False,
+    )
+    assert abstained.correct_citing_the_fault is False
 
 
 @pytest.mark.parametrize("outcome", ["refused", "truncated", "invalid_output"])
@@ -323,3 +329,30 @@ def test_a_paired_difference_uses_only_the_incidents_both_sides_have() -> None:
     assert result is not None
     assert (result["difference"], result["incidents"]) == (0.5, 2)
     assert paired({"A": 1.0}, {"A": 0.0}) is None
+
+
+def test_the_stricter_accuracy_drops_an_answer_that_cites_another_faults_document() -> None:
+    elsewhere = [Citation(doc_id="X1", quote="a quote of twenty characters")]
+    rows = [row("A"), row("B", citations=elsewhere)]
+
+    result = summary(rows, label("A"), label("B"))
+
+    assert result["root_cause_accuracy"] == 1.0
+    assert result["root_cause_accuracy_citing_the_fault"] == 0.5
+    assert result["cites_a_document_of_the_fault"] == 0.5
+
+
+def test_an_interval_resamples_whole_faults_when_it_is_told_which_incident_is_whose() -> None:
+    # Six incidents from three faults, and each fault is all right or all wrong.
+    per_case = {"A1": 1.0, "A2": 1.0, "B1": 1.0, "B2": 1.0, "C1": 0.0, "C2": 0.0}
+    fault_of = {case: case[0] for case in per_case}
+
+    by_incident = interval(per_case)
+    by_fault = interval(per_case, fault_of)
+
+    assert by_incident is not None
+    assert by_fault is not None
+    # Three independent faults say less than six independent incidents would.
+    assert by_fault[1] - by_fault[0] > by_incident[1] - by_incident[0]
+    assert by_fault == [0.0, 1.0]
+    assert interval({"A1": 1.0, "A2": 0.0}, {"A1": "A", "A2": "A"}) is None

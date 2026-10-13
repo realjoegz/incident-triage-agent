@@ -40,7 +40,6 @@ faults:
   - id: F01
     service: checkout-api
     category: connection_pool_exhaustion
-    transparency: transparent
     title: "Adding to the basket fails with 503"
     signature: "CHK-POOL-0417 cart-cache connection acquire timed out after 3000ms active=40 idle=0 waiting=212"
     generic_log: "checkout-api POST /v1/cart/items status=503 dur=3004ms"
@@ -65,7 +64,6 @@ faults:
     blip: true
     service: checkout-api
     category: code_regression
-    transparency: opaque
     title: "Order placement slow for large baskets"
     signature: "CHK-LAT-2210 handler=PlaceOrder p99=4800ms budget=1200ms tax_lookups=37"
     generic_log: "checkout-api POST /v1/orders status=200 dur=4712ms"
@@ -89,7 +87,6 @@ faults:
   - id: F03
     service: checkout-api
     category: config_change
-    transparency: opaque
     title: "Paid orders stuck in review"
     signature: "CHK-ORD-3306 order held in PENDING_REVIEW for more than 120s reason=fraud_async"
     generic_log: "checkout-api GET /v1/orders/88213 status=200 state=PENDING_REVIEW"
@@ -114,7 +111,6 @@ faults:
     blip: true
     service: payments-gateway
     category: rate_limiting
-    transparency: opaque
     title: "Card authorisations declined in bursts"
     signature: "PGW-4012 authorisation declined by upstream code=R29 route=acq-primary"
     generic_log: "payments-gateway POST /v1/authorise status=402 dur=180ms"
@@ -138,7 +134,6 @@ faults:
   - id: F05
     service: payments-gateway
     category: certificate_expiry
-    transparency: opaque
     title: "Every card authorisation fails at once"
     signature: "PGW-5120 handshake with acq-primary failed alert=45"
     generic_log: "payments-gateway POST /v1/authorise status=502 dur=40ms"
@@ -162,7 +157,6 @@ faults:
   - id: F06
     service: payments-gateway
     category: connection_pool_exhaustion
-    transparency: opaque
     title: "Captures time out while authorisations stay fast"
     signature: "PGW-3301 no backend slot for ledger write cl_waiting=180"
     generic_log: "payments-gateway POST /v1/capture status=504 dur=10002ms"
@@ -186,7 +180,6 @@ faults:
   - id: F07
     service: ledger-service
     category: lock_contention
-    transparency: opaque
     title: "Ledger writes fail shortly after 02:00 UTC"
     signature: "LDG-7741 statement cancelled after 5000ms wait rel=settlements pid=48213"
     generic_log: "ledger-service POST /v1/entries status=500 dur=5008ms"
@@ -211,7 +204,6 @@ faults:
   - id: F08
     service: ledger-service
     category: disk_full
-    transparency: transparent
     title: "Ledger primary rejects all writes"
     signature: "LDG-1090 could not write to pg_wal: No space left on device"
     generic_log: "ledger-service POST /v1/entries status=503 dur=12ms"
@@ -235,7 +227,6 @@ faults:
   - id: F09
     service: ledger-service
     category: memory_exhaustion
-    transparency: opaque
     title: "ledger-service pods restart during statement exports"
     signature: "LDG-2203 worker exited signal=9 rss=7.8G limit=8G task=statement-export"
     generic_log: "ledger-service GET /v1/statements/export status=502 dur=41870ms"
@@ -259,7 +250,6 @@ faults:
   - id: F10
     service: catalog-search
     category: memory_exhaustion
-    transparency: opaque
     title: "Searches rejected on some nodes"
     signature: "CAT-6610 request rejected: parent breaker at 96% of heap"
     generic_log: "catalog-search GET /v1/search status=429 dur=6ms"
@@ -283,7 +273,6 @@ faults:
   - id: F11
     service: catalog-search
     category: disk_full
-    transparency: opaque
     title: "Product updates rejected, search results stale"
     signature: "CAT-6120 write blocked: index read-only FORBIDDEN/12"
     generic_log: "catalog-search PUT /v1/products/40117 status=403 dur=9ms"
@@ -307,7 +296,6 @@ faults:
   - id: F12
     service: catalog-search
     category: config_change
-    transparency: opaque
     title: "Common searches return nothing"
     signature: "CAT-6405 analyzer reload failed set=synonyms_v41 line=2207"
     generic_log: "catalog-search GET /v1/search status=200 hits=0 dur=11ms"
@@ -331,7 +319,6 @@ faults:
   - id: F13
     service: notify-worker
     category: queue_consumer_stall
-    transparency: opaque
     title: "Transactional emails stop while workers look healthy"
     signature: "NTF-8102 message returned to queue redelivery=57 queue=email-tx"
     generic_log: "notify-worker queue=email-tx depth=48210 oldest=2710s"
@@ -356,7 +343,6 @@ faults:
     blip: true
     service: notify-worker
     category: rate_limiting
-    transparency: transparent
     title: "Text messages delayed or never sent"
     signature: "NTF-8450 provider answered 429 bucket=sms-tx retry_after=60"
     generic_log: "notify-worker channel=sms sent=0 deferred=1840"
@@ -380,7 +366,6 @@ faults:
   - id: F15
     service: notify-worker
     category: dns_failure
-    transparency: transparent
     title: "Every email send fails immediately"
     signature: "NTF-8011 lookup smtp-relay.larkhill.internal failed: SERVFAIL"
     generic_log: "notify-worker channel=email sent=0 failed=912"
@@ -404,7 +389,6 @@ faults:
   - id: F16
     service: auth-service
     category: certificate_expiry
-    transparency: opaque
     title: "Signed-in users are logged out everywhere"
     signature: "AUTH-2291 token rejected: kid=2025-q3 not in keyset"
     generic_log: "auth-service POST /v1/token/verify status=401 dur=3ms"
@@ -429,7 +413,6 @@ faults:
     blip: true
     service: auth-service
     category: code_regression
-    transparency: opaque
     title: "Login loops on Safari"
     signature: "AUTH-2317 callback without session cookie agent=Safari"
     generic_log: "auth-service GET /v1/login/callback status=302 location=/login"
@@ -453,7 +436,6 @@ faults:
   - id: F18
     service: auth-service
     category: connection_pool_exhaustion
-    transparency: transparent
     title: "Logins time out, existing sessions keep working"
     signature: "AUTH-2105 user-db pool exhausted: 30 of 30 in use, 96 waiting"
     generic_log: "auth-service POST /v1/login status=503 dur=5003ms"
@@ -477,7 +459,6 @@ faults:
   - id: F19
     service: inventory-sync
     category: queue_consumer_stall
-    transparency: opaque
     title: "Stock levels hours behind the warehouses"
     signature: "INV-5530 consumer lag=184000 partition=7 group=stock-apply"
     generic_log: "inventory-sync stream=stock-events applied=120/s received=2400/s"
@@ -502,7 +483,6 @@ faults:
     blip: true
     service: inventory-sync
     category: lock_contention
-    transparency: transparent
     title: "Stock reservations fail during the afternoon import"
     signature: "INV-5207 deadlock detected: reserve_stock chosen as victim"
     generic_log: "inventory-sync POST /v1/reservations status=409 dur=1012ms"
@@ -527,7 +507,6 @@ faults:
   - id: F21
     service: inventory-sync
     category: config_change
-    transparency: opaque
     title: "Thousands of products drop to zero stock"
     signature: "INV-5611 unmapped location code count=4312 feed=warehouse-north"
     generic_log: "inventory-sync feed=warehouse-north applied=0 skipped=4312"
@@ -551,7 +530,6 @@ faults:
   - id: F22
     service: edge-proxy
     category: certificate_expiry
-    transparency: opaque
     title: "Browsers show a security warning for the shop"
     signature: "EDG-9001 tls handshake aborted sni=shop.larkhill.example alert=45"
     generic_log: "edge-proxy listener=443 handshakes_ok=0 handshakes_failed=5120"
@@ -575,7 +553,6 @@ faults:
   - id: F23
     service: edge-proxy
     category: dns_failure
-    transparency: transparent
     title: "Checkout routes return 502 instantly"
     signature: "EDG-9140 upstream resolve failed host=checkout.larkhill.internal NXDOMAIN"
     generic_log: "edge-proxy route=/v1/orders status=502 upstream=- dur=2ms"
@@ -586,21 +563,20 @@ faults:
     tickets:
       - "Checkout pages fail instantly with a bad gateway error. The checkout team says their service is up and healthy."
       - "The shop loads and search works, but every attempt to open the basket or pay gives an error page straight away."
-    cause: "The internal DNS record for checkout.larkhill.internal was deleted when its service entry was recreated under a new name. edge-proxy could not resolve its upstream, so it had nowhere to send checkout requests."
+    cause: "The internal resolvers that edge-proxy uses had stopped receiving zone transfers and were serving an old copy of the larkhill.internal zone. That copy had no record for checkout.larkhill.internal, so the resolvers answered NXDOMAIN and edge-proxy had no upstream address for checkout requests."
     triggers:
-      - "a service rename that removed the old record before the proxy was pointed at the new one"
-      - "an infrastructure clean-up that deleted records it judged unused"
-    resolution: "Recreated the record as an alias of the new name and updated the proxy's upstream. Added a check that a record is unreferenced before it is deleted."
+      - "zone transfers that had been failing silently for nine days when the checkout record moved"
+      - "resolvers that came back from a power test with a copy of the zone from before the record existed"
+    resolution: "Forced a zone transfer to the resolvers. Added an alert on the zone serial that each resolver serves."
     diagnose:
-      - "Resolve checkout.larkhill.internal from an edge-proxy host."
-      - "Check the DNS change log for a deletion in the internal zone."
-      - "Recreate the record or point the upstream at the new name."
+      - "Resolve checkout.larkhill.internal from an edge-proxy host against each resolver in turn."
+      - "Compare the zone serial on each resolver with the serial on the primary."
+      - "Force a zone transfer to a resolver that is behind, or take it out of rotation."
 
   - id: F24
     blip: true
     service: edge-proxy
     category: code_regression
-    transparency: opaque
     title: "Signed-in users get an error on every page"
     signature: "EDG-9212 request rejected status=431 header_bytes=9120 limit=8192"
     generic_log: "edge-proxy route=/ status=431 dur=1ms"

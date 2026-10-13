@@ -1,7 +1,7 @@
 """The fault catalogue as typed objects."""
 
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
@@ -29,7 +29,6 @@ class Fault(BaseModel):
     id: str
     service: str
     category: Category
-    transparency: Literal["transparent", "opaque"]
     title: str
     signature: str
     generic_log: str

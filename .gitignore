@@ -10,3 +10,7 @@ dist/
 .vscode/
 .DS_Store
 .env
+
+# The id of a judge batch that is waiting for its results, and a file being rewritten.
+eval/recordings/.pending-*
+*.jsonl.tmp

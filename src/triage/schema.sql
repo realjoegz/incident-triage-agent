@@ -1,6 +1,6 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- One row per document. The documents of this corpus are 60 to 160 words, so a document is
+-- One row per document. The documents of this corpus are 30 to 160 words, so a document is
 -- embedded whole and there is no chunk table.
 CREATE TABLE IF NOT EXISTS documents (
     id        text PRIMARY KEY,

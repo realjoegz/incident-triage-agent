@@ -1,3 +1,4 @@
+import asyncio
 import json
 from pathlib import Path
 
@@ -161,6 +162,43 @@ async def test_no_call_is_made_once_the_cap_is_reached(tmp_path: Path) -> None:
     assert len(inner.requests) == 1
     # What is already recorded costs nothing and is still answered.
     assert (await llm.complete(REQUEST)).text is not None
+
+
+async def test_the_same_request_asked_twice_at_once_is_paid_for_once(tmp_path: Path) -> None:
+    class Slow:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def complete(self, request: LLMRequest) -> LLMResponse:
+            self.calls += 1
+            await asyncio.sleep(0.01)
+            # A second call would answer differently, as a model may.
+            return response(f"answer {self.calls}", model="claude-haiku-5-5")
+
+    recordings = Recordings(tmp_path / "r.jsonl")
+    inner = Slow()
+    budget = Budget(max_usd=1.0)
+    llm = RecordingLLM(inner, recordings, budget)
+
+    answers = await asyncio.gather(*(llm.complete(REQUEST) for _ in range(5)))
+
+    assert inner.calls == 1
+    assert budget.paid_calls == 1
+    assert {answer.text for answer in answers} == {"answer 1"}
+    # What the callers got is what a replay will give.
+    assert (await ReplayLLM(recordings).complete(REQUEST)).text == "answer 1"
+
+
+async def test_a_response_is_on_disk_before_it_is_charged(tmp_path: Path) -> None:
+    recordings = Recordings(tmp_path / "r.jsonl")
+    # A model without a recorded price: charging it fails.
+    inner = ScriptedLLM(response(abstention(), model="claude-next"))
+    llm = RecordingLLM(inner, recordings, Budget(max_usd=1.0))
+
+    with pytest.raises(KeyError, match="no price is recorded"):
+        await llm.complete(REQUEST)
+
+    assert Recordings(tmp_path / "r.jsonl").get(REQUEST.fingerprint(), 0) is not None
 
 
 async def test_replay_never_calls_a_model_and_names_the_request_it_lacks(tmp_path: Path) -> None:
@@ -327,6 +365,15 @@ async def test_after_the_last_attempt_the_failure_is_an_error_and_not_an_answer(
 
     assert len(api.requests) == MAX_ATTEMPTS
     assert len(waits) == MAX_ATTEMPTS - 1
+
+
+@pytest.mark.parametrize("status", [408, 409])
+async def test_a_request_timeout_and_a_conflict_are_retried(
+    waits: list[float], status: int
+) -> None:
+    api = FakeAPI(failure(status, "api_error"), ok())
+
+    assert (await api.llm().complete(REQUEST)).attempts == 2
 
 
 async def test_a_request_the_api_rejects_is_not_sent_again(waits: list[float]) -> None:

@@ -71,14 +71,15 @@ class ClaudeLLM:
                 failure: Exception = error
                 retry_after = _retry_after(error)
             except anthropic.APIStatusError as error:
-                if error.status_code < 500:
+                # A request timeout and a conflict are passing conditions, like a 5xx.
+                if error.status_code < 500 and error.status_code not in (408, 409):
                     raise LLMError(f"the API rejected the request: {error.message}") from error
                 failure, retry_after = error, None
             except anthropic.APIConnectionError as error:
                 failure, retry_after = error, None
             else:
                 latency = time.perf_counter() - started
-                return to_response(request, message, latency, attempt)
+                return to_response(request.model, message, latency, attempt)
             if attempt == MAX_ATTEMPTS:
                 raise LLMError(f"no response after {MAX_ATTEMPTS} attempts: {failure}") from failure
             backoff = min(BASE_DELAY_S * 2 ** (attempt - 1), MAX_DELAY_S) + random.uniform(0, 1)
@@ -95,22 +96,23 @@ def _retry_after(error: anthropic.RateLimitError) -> float | None:
 
 
 def to_response(
-    request: LLMRequest,
+    model: str,
     message: anthropic.types.Message,
     latency: float,
     attempts: int,
     *,
     batch: bool = False,
 ) -> LLMResponse:
+    """`model` is the one that was asked for."""
     # An alias may resolve to a dated snapshot of the same model. Anything else served the
     # request in place of the model that was asked for, and its answer must not be scored.
-    if not message.model.startswith(request.model):
-        raise LLMError(f"asked for {request.model} and was served by {message.model}")
+    if not message.model.startswith(model):
+        raise LLMError(f"asked for {model} and was served by {message.model}")
     text = next((block.text for block in message.content if block.type == "text"), None)
     return LLMResponse(
         text=text,
         stop_reason=message.stop_reason or "unknown",
-        model=request.model,
+        model=model,
         usage=Usage(
             input_tokens=message.usage.input_tokens,
             output_tokens=message.usage.output_tokens,

@@ -104,9 +104,13 @@ def build_corpus(catalogue: Catalogue) -> list[Document]:
             severity = ("SEV1", "SEV2", "SEV3")[_pick("severity", fault.id, occurrence) % 3]
             happened = fault.symptoms
             title = fault.title
+            resolution = fault.resolution
             if occurrence == 1:
                 happened = f"The same pattern as {first_id}. {fault.symptoms}"
                 title = f"Repeat of {first_id}: {fault.title}"
+                # The resolution names a lasting fix, so a second occurrence has to say why
+                # there was one.
+                resolution = f"What was done after {first_id} was no longer in place. {resolution}"
             documents.append(
                 Document(
                     id=incident_ids[fault.id, occurrence],
@@ -122,7 +126,7 @@ def build_corpus(catalogue: Catalogue) -> list[Document]:
                             f"Signals: {signals}",
                             f"Root cause: {fault.cause} "
                             f"The trigger was {fault.triggers[occurrence]}.",
-                            f"Resolution: {fault.resolution}",
+                            f"Resolution: {resolution}",
                         ]
                     ),
                 )
@@ -211,7 +215,7 @@ def _render(
         # Seen from the service that depends on the faulty one: its alert and its log lines.
         # The faulty service's own line is not in the excerpt.
         effect = ("ERROR", fault.downstream, fault.downstream_log)
-        alert = f"{fault.downstream}: elevated errors on calls to {fault.service}"
+        alert = f"{fault.downstream}: elevated errors that involve {fault.service}"
         ticket = fault.tickets[1]
         lines = [effect, quiet(fault.downstream, 1), effect, generic, effect]
 
@@ -257,7 +261,6 @@ def build_incidents(catalogue: Catalogue) -> list[LabelledIncident]:
                     category=fault.category if isinstance(fault, Fault) else Category.UNKNOWN,
                     doc_ids=gold[fault.id] if known else [],
                     presentation=presentation,
-                    transparency=fault.transparency if isinstance(fault, Fault) else None,
                     service=fault.service,
                     background_fault=background.id if background else None,
                 ),

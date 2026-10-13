@@ -4,6 +4,7 @@ Before any number of a real model is believed, the pipeline has to give a model 
 answer key the score it deserves, and a model that knows nothing the score it deserves.
 """
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,7 @@ from tests.fakes import RuleLLM, always_abstains, always_rate_limiting, oracle
 from triage.agent import prompts
 from triage.dataset.catalogue import Catalogue, load_catalogue
 from triage.evaluation import runner
+from triage.evaluation.rows import Verdict
 from triage.evaluation.variants import BY_NAME, VARIANTS
 from triage.llm.base import LLMError, LLMRequest, LLMResponse
 from triage.llm.pricing import cost_usd
@@ -122,8 +124,6 @@ async def test_cost_is_the_recorded_tokens_at_the_price_of_each_variants_model(
 
 
 def _any_request() -> LLMRequest:
-    from triage.evaluation.rows import Verdict
-
     user = '<stated_cause category="unknown">\nnone\n</stated_cause>'
     return LLMRequest("claude-haiku-5-5", "low", 100, "", user, Verdict)
 
@@ -247,3 +247,86 @@ def test_a_sample_takes_turns_across_the_kinds_of_incident(
     assert sum(1 for answerable, _ in kinds if not answerable) == 2
     assert runner.sample_cases(labelled, 5) == sample
     assert len(runner.sample_cases(labelled, 500)) == 50
+
+
+async def test_answers_that_make_the_same_claim_share_one_verdict_live_and_in_replay(
+    scratch: Settings, labelled: list[LabelledIncident], catalogue: Catalogue
+) -> None:
+    """Three repetitions of an incident often state the same cause with the same citations."""
+
+    class MoodyJudge(RuleLLM):
+        """Takes its time, and would give a different verdict each time it is asked."""
+
+        verdicts = 0
+
+        async def complete(self, request: LLMRequest) -> LLMResponse:
+            if request.schema is not Verdict:
+                return await super().complete(request)
+            await asyncio.sleep(0.002)
+            self.verdicts += 1
+            verdict = Verdict(reason="mood", supported=self.verdicts % 2 == 0)
+            answer = await super().complete(request)
+            return answer.model_copy(update={"text": verdict.model_dump_json()})
+
+    llm = MoodyJudge(labelled, catalogue, oracle(catalogue))
+    live = await run_with(
+        scratch, llm, variants=(BY_NAME["hybrid-haiku"],), reps=runner.REPETITIONS, control_count=0
+    )
+
+    replayed = await runner.evaluate(
+        scratch,
+        live=False,
+        variants=(BY_NAME["hybrid-haiku"],),
+        control_count=0,
+        log=lambda _: None,
+    )
+
+    judged = [row for row in live.rows if row.judge is not None]
+    claims = {(row.case_id, row.likely_cause, str(row.citations)) for row in judged}
+    assert len(judged) == 3 * len(claims)
+    assert llm.verdicts == len(claims)
+    assert runner.rendered(replayed) == runner.rendered(live)
+    assert sum(row.judge_cost_usd for row in judged) == pytest.approx(
+        len(claims) * cost_usd("claude-opus-5-5", (await llm.complete(_any_request())).usage),
+        rel=1e-4,
+    )
+
+
+@pytest.mark.parametrize(
+    "less",
+    [{"control_count": 6}, {"judge": "none"}, {"reps": 1}, {"variants": (BY_NAME["none-haiku"],)}],
+)
+async def test_a_run_that_covers_less_keeps_the_recordings_it_did_not_use(
+    scratch: Settings, labelled: list[LabelledIncident], catalogue: Catalogue, less: dict[str, Any]
+) -> None:
+    llm = RuleLLM(labelled, catalogue, oracle(catalogue))
+    full = await run_with(scratch, llm, reps=runner.REPETITIONS)
+    paid = len(llm.requests)
+
+    await run_with(scratch, llm, **{"reps": runner.REPETITIONS, **less})
+
+    # Nothing was dropped: the whole evaluation still replays, and a full run pays nothing more.
+    replayed = await runner.evaluate(scratch, live=False, log=lambda _: None)
+    assert runner.rendered(replayed) == runner.rendered(full)
+    assert len(llm.requests) == paid
+
+
+def test_only_a_run_of_everything_counts_as_full(labelled: list[LabelledIncident]) -> None:
+    everything: dict[str, Any] = {
+        "variants": VARIANTS,
+        "cases": None,
+        "reps": runner.REPETITIONS,
+        "judge": "batch",
+        "control_count": None,
+    }
+
+    assert runner.is_full_run(**everything)
+    assert runner.is_full_run(**{**everything, "judge": "direct"})
+    for less in (
+        {"variants": VARIANTS[:4]},
+        {"cases": labelled[:5]},
+        {"reps": 1},
+        {"judge": "none"},
+        {"control_count": 6},
+    ):
+        assert not runner.is_full_run(**{**everything, **less})

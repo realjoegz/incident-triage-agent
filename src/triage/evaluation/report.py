@@ -61,10 +61,10 @@ def results_table(summary: Mapping[str, Any]) -> str:
 def detail_table(summary: Mapping[str, Any]) -> str:
     """The longer table of docs/evaluation.md: intervals and what went wrong, per variant."""
     lines = [
-        "| Variant | Root-cause accuracy (95% interval) | Wrong cause | Abstained despite "
-        "evidence | Abstains without evidence (95% interval) | Citation faithfulness "
-        "| Cites a document of the fault | First-draft citations valid | Repaired |",
-        "|---|---|---|---|---|---|---|---|---|",
+        "| Variant | Root-cause accuracy (95% interval) | Right and citing the fault "
+        "| Wrong cause | Abstained despite evidence | Abstains without evidence (95% interval) "
+        "| First-draft citations valid | Repaired |",
+        "|---|---|---|---|---|---|---|---|",
     ]
     for values in summary["variants"].values():
         lines.append(
@@ -74,12 +74,11 @@ def detail_table(summary: Mapping[str, Any]) -> str:
                     values["label"],
                     _percent(values["root_cause_accuracy"])
                     + _range(values["root_cause_accuracy_interval"]),
+                    _percent(values["root_cause_accuracy_citing_the_fault"]),
                     _percent(values["wrong_cause_rate"]),
                     _percent(values["abstained_despite_evidence_rate"]),
                     _percent(values["abstention_without_evidence"])
                     + _range(values["abstention_without_evidence_interval"]),
-                    _percent(values["citation_faithfulness"]),
-                    _percent(values["cites_a_document_of_the_fault"]),
                     _percent(values["draft_citation_validity"]),
                     _percent(values["repair_rate"]),
                 ]

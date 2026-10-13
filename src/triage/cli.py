@@ -125,8 +125,8 @@ def _eval_run(settings: Settings, args: argparse.Namespace) -> int:
     variants = VARIANTS
     if args.variants:
         variants = tuple(BY_NAME[name] for name in args.variants.split(","))
-    partial = cases is not None or args.reps != runner.REPETITIONS or variants != VARIANTS
-    if partial and args.out is None:
+    full = runner.is_full_run(variants, cases, args.reps, args.judge, args.controls)
+    if not full and args.out is None:
         print("a partial run needs --out, so that it cannot replace the results", file=sys.stderr)
         return 2
     budget = Budget(max_usd=args.max_usd)
@@ -154,14 +154,22 @@ def _eval_run(settings: Settings, args: argparse.Namespace) -> int:
         "anthropic_sdk": anthropic.__version__,
         **evaluation.timings,
     }
+    print(report.results_table(evaluation.summary))
+    print(f"paid ${budget.spent_usd:.4f} for {budget.paid_calls} calls")
+    if evaluation.errors and args.out is None:
+        # The committed results are left as they were: a results folder with holes in it
+        # could not be replayed. Every answer that did arrive is recorded.
+        for lost in evaluation.errors[:10]:
+            print(f"no answer: {lost.variant} {lost.case_id} rep {lost.rep}: {lost.detail}")
+        print(
+            f"{len(evaluation.errors)} attempts gave no answer, so the results were not "
+            "written. Run the same command again: it pays only for what is missing."
+        )
+        return 1
     out = args.out or _results_dir(settings)
     runner.write(evaluation, out, run_info)
-    print(report.results_table(evaluation.summary))
-    print(f"paid ${budget.spent_usd:.4f} for {budget.paid_calls} calls; results in {out}/")
-    if evaluation.errors:
-        print(f"{len(evaluation.errors)} attempts gave no answer; see {out}/{runner.ERRORS_FILE}")
-        return 1
-    return 0
+    print(f"results in {out}/")
+    return 1 if evaluation.errors else 0
 
 
 def _eval_estimate(settings: Settings, args: argparse.Namespace) -> int:

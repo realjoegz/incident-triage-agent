@@ -71,6 +71,28 @@ class Evaluation:
     timings: dict[str, float] = field(default_factory=dict)
 
 
+def is_full_run(
+    variants: Sequence[Variant],
+    cases: Sequence[LabelledIncident] | None,
+    reps: int,
+    judge: JudgeMode,
+    control_count: int | None,
+) -> bool:
+    """Whether a run covers everything that the committed results cover.
+
+    Only such a run may replace the results or drop recordings that it did not use. A run with
+    fewer incidents, repetitions, variants or controls, or without the judge, used less than
+    there is, and what it did not use is still paid for and still wanted.
+    """
+    return (
+        cases is None
+        and reps == REPETITIONS
+        and tuple(variants) == VARIANTS
+        and judge != "none"
+        and control_count is None
+    )
+
+
 def sample_cases(labelled: Sequence[LabelledIncident], count: int) -> list[LabelledIncident]:
     """The first `count` incidents when taking turns across evidence and presentation."""
     groups: dict[tuple[bool, str], list[LabelledIncident]] = {}
@@ -108,7 +130,7 @@ async def evaluate(
     labelled = load_labelled(data_dir)
     labels = {item.id: item.label for item in labelled}
     corpus = load_corpus(data_dir)
-    full_run = cases is None and reps == REPETITIONS and tuple(variants) == VARIANTS
+    full_run = is_full_run(variants, cases, reps, judge, control_count)
     cases = list(cases) if cases is not None else labelled
     budget = budget or Budget(max_usd=0.0)
     paid = (paid_llm or ClaudeLLM()) if live else None
@@ -172,7 +194,8 @@ async def evaluate(
             ]
             requests += [check.input.request() for check in checks]
             failed = await fill_from_batch(
-                anthropic.AsyncAnthropic(max_retries=2, timeout=REQUEST_TIMEOUT_S),
+                # No retries of its own: see `fill_from_batch`.
+                anthropic.AsyncAnthropic(max_retries=0, timeout=REQUEST_TIMEOUT_S),
                 {request.fingerprint(): request for request in requests},
                 judge_recordings,
                 budget,
@@ -269,60 +292,73 @@ async def _ask_judge(llm: LLM, request: LLMRequest) -> LLMResponse:
         ) from error
 
 
+async def _verdicts(
+    requests: Sequence[LLMRequest], llm: LLM
+) -> tuple[dict[str, LLMResponse], dict[str, str]]:
+    """One call per distinct request. Returns the responses and the failures, by fingerprint."""
+    gate = asyncio.Semaphore(CONCURRENCY)
+    distinct = {request.fingerprint(): request for request in requests}
+    responses: dict[str, LLMResponse] = {}
+    failures: dict[str, str] = {}
+
+    async def one(key: str, request: LLMRequest) -> None:
+        try:
+            async with gate:
+                responses[key] = await _ask_judge(llm, request)
+        except LLMError as error:
+            failures[key] = str(error)
+
+    await asyncio.gather(*(one(key, request) for key, request in distinct.items()))
+    return responses, failures
+
+
 async def _judge_rows(
     rows: Sequence[Row],
     incidents: Mapping[str, Incident],
     corpus: Mapping[str, Document],
     llm: LLM,
 ) -> list[ErrorRow]:
-    """Sets the verdict on each row. Rows with the same claim and citations share one call."""
-    gate = asyncio.Semaphore(CONCURRENCY)
-    requests = {
-        id(row): judging.judge_input(row, incidents[row.case_id], corpus).request() for row in rows
-    }
+    """Sets the verdict on each row. Rows with the same claim and citations share one call,
+    one verdict and its cost."""
+    keys = [judging.judge_input(row, incidents[row.case_id], corpus).request() for row in rows]
+    responses, failures = await _verdicts(keys, llm)
     sharing: dict[str, int] = {}
-    for request in requests.values():
+    for request in keys:
         sharing[request.fingerprint()] = sharing.get(request.fingerprint(), 0) + 1
     errors: list[ErrorRow] = []
-
-    async def one(row: Row) -> None:
-        request = requests[id(row)]
-        try:
-            async with gate:
-                response = await _ask_judge(llm, request)
-        except LLMError as error:
-            errors.append(_error(row.variant, row.case_id, row.rep, "judge_error", str(error)))
-            return
+    for row, request in zip(rows, keys, strict=True):
+        key = request.fingerprint()
+        if key in failures:
+            errors.append(_error(row.variant, row.case_id, row.rep, "judge_error", failures[key]))
+            continue
+        response = responses[key]
         row.judge = judging.parse_verdict(response)
         cost = cost_usd(response.model, response.usage, batch=response.batch)
-        row.judge_cost_usd = round(cost / sharing[request.fingerprint()], 8)
-
-    await asyncio.gather(*(one(row) for row in rows))
+        row.judge_cost_usd = round(cost / sharing[key], 8)
     return errors
 
 
 async def _judge_controls(
     checks: Sequence[judging.Control], llm: LLM
 ) -> tuple[list[dict[str, object]], list[ErrorRow]]:
-    gate = asyncio.Semaphore(CONCURRENCY)
+    requests = [check.input.request() for check in checks]
+    responses, failures = await _verdicts(requests, llm)
+    results: list[dict[str, object]] = []
     errors: list[ErrorRow] = []
-
-    async def one(check: judging.Control) -> dict[str, object]:
-        verdict = None
-        try:
-            async with gate:
-                verdict = judging.parse_verdict(await _ask_judge(llm, check.input.request()))
-        except LLMError as error:
-            errors.append(_error("judge-controls", check.name, 0, "judge_error", str(error)))
-        return {
-            "name": check.name,
-            "kind": check.kind,
-            "expected": check.expected,
-            "supported": verdict.supported if verdict else None,
-            "reason": verdict.reason if verdict else None,
-        }
-
-    results = list(await asyncio.gather(*(one(check) for check in checks)))
+    for check, request in zip(checks, requests, strict=True):
+        key = request.fingerprint()
+        if key in failures:
+            errors.append(_error("judge-controls", check.name, 0, "judge_error", failures[key]))
+        verdict = judging.parse_verdict(responses[key]) if key in responses else None
+        results.append(
+            {
+                "name": check.name,
+                "kind": check.kind,
+                "expected": check.expected,
+                "supported": verdict.supported if verdict else None,
+                "reason": verdict.reason if verdict else None,
+            }
+        )
     return results, errors
 
 

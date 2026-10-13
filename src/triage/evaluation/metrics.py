@@ -1,9 +1,11 @@
 """From rows to the numbers of the results table.
 
 Every rate is first averaged within an incident, over its repetitions, and then across
-incidents, so that an incident counts once however often it was run. Confidence intervals come
-from resampling incidents, not rows, for the same reason: three answers to one incident are not
-three independent observations.
+incidents, so that an incident counts once however often it was run.
+
+Confidence intervals come from resampling faults, not rows and not incidents. Three answers to
+one incident are not three independent observations, and neither are two incidents that were
+rendered from the same fault: they share its log lines and its documents.
 """
 
 import math
@@ -45,20 +47,35 @@ def _resamples(count: int) -> list[list[int]]:
     ]
 
 
-def interval(per_case: Mapping[str, float]) -> list[float] | None:
-    """A 95% percentile bootstrap interval for the mean over incidents."""
-    values = [per_case[case] for case in sorted(per_case)]
-    if len(values) < 2:
+def interval(
+    per_case: Mapping[str, float], cluster_of: Mapping[str, str] | None = None
+) -> list[float] | None:
+    """A 95% percentile bootstrap interval for the mean over incidents.
+
+    `cluster_of` names the fault of each incident. A draw takes whole faults, with all of their
+    incidents. Without it every incident is its own cluster.
+    """
+    groups: dict[str, list[float]] = {}
+    for case in sorted(per_case):
+        groups.setdefault(cluster_of[case] if cluster_of else case, []).append(per_case[case])
+    clusters = [groups[name] for name in sorted(groups)]
+    if len(clusters) < 2:
         return None
-    means = sorted(
-        sum(values[index] for index in draw) / len(values) for draw in _resamples(len(values))
-    )
+    means = []
+    for draw in _resamples(len(clusters)):
+        values = [value for index in draw for value in clusters[index]]
+        means.append(sum(values) / len(values))
+    means.sort()
     low = means[int(0.025 * len(means))]
     high = means[int(0.975 * len(means)) - 1]
     return [round(low, DECIMALS), round(high, DECIMALS)]
 
 
-def paired(ours: Mapping[str, float], theirs: Mapping[str, float]) -> dict[str, object] | None:
+def paired(
+    ours: Mapping[str, float],
+    theirs: Mapping[str, float],
+    cluster_of: Mapping[str, str] | None = None,
+) -> dict[str, object] | None:
     """The mean of `ours - theirs` over the incidents both have, with its interval."""
     shared = sorted(set(ours) & set(theirs))
     if len(shared) < 2:
@@ -66,7 +83,7 @@ def paired(ours: Mapping[str, float], theirs: Mapping[str, float]) -> dict[str, 
     differences = {case: ours[case] - theirs[case] for case in shared}
     return {
         "difference": _round(mean(list(differences.values()))),
-        "interval": interval(differences),
+        "interval": interval(differences, cluster_of),
         "incidents": len(shared),
     }
 
@@ -87,6 +104,7 @@ class Graded:
 
     def __init__(self, variant: Variant, rows: Sequence[Row], labels: Mapping[str, Label]) -> None:
         self.variant = variant
+        self.fault_of = {case: label.fault_id for case, label in labels.items()}
         self.rows = sorted(rows, key=lambda row: (row.case_id, row.rep))
         self.grades: list[tuple[Row, Grade]] = [
             (row, grade(row, labels[row.case_id], retrieves=variant.mode != "none"))
@@ -128,6 +146,13 @@ class Graded:
                 if g.scored and g.cites_gold is not None
             ]
         )
+        citing_the_fault = _per_case(
+            [
+                (row.case_id, float(g.correct_citing_the_fault))
+                for row, g in self.grades
+                if g.scored and g.correct_citing_the_fault is not None
+            ]
+        )
         with_calls = [row for row in self.rows if row.calls]
         drafted = sum(row.draft_citations for row in self.rows)
         reps = sorted({row.rep for row in self.rows})
@@ -156,14 +181,15 @@ class Graded:
             "retrieval_hit_at_5": _rate(hit),
             "retrieval_mrr": _rate(reciprocal),
             "root_cause_accuracy": _rate(accuracy),
-            "root_cause_accuracy_interval": interval(accuracy),
+            "root_cause_accuracy_interval": interval(accuracy, self.fault_of),
             "root_cause_accuracy_by_repetition": by_rep,
+            "root_cause_accuracy_citing_the_fault": _rate(citing_the_fault),
             "wrong_cause_rate": _rate(self.per_case("wrong_cause", answerable=True)),
             "abstained_despite_evidence_rate": _rate(self.per_case("abstained", answerable=True)),
             "abstention_without_evidence": _rate(abstention),
-            "abstention_without_evidence_interval": interval(abstention),
+            "abstention_without_evidence_interval": interval(abstention, self.fault_of),
             "citation_faithfulness": _rate(faithfulness),
-            "citation_faithfulness_interval": interval(faithfulness),
+            "citation_faithfulness_interval": interval(faithfulness, self.fault_of),
             "answers_judged": len(judged),
             "answers_to_judge": sum(1 for row in self.rows if _makes_a_cited_claim(row)),
             "cites_a_document_of_the_fault": _rate(cites_gold),
@@ -211,10 +237,12 @@ def summarise(
                 "root_cause_accuracy": paired(
                     reference.per_case("correct", answerable=True),
                     other.per_case("correct", answerable=True),
+                    reference.fault_of,
                 ),
                 "abstention_without_evidence": paired(
                     reference.per_case("correct", answerable=False),
                     other.per_case("correct", answerable=False),
+                    reference.fault_of,
                 ),
             }
     return {

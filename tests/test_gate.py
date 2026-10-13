@@ -203,6 +203,11 @@ def state(settings: Settings, recorded: Path, tmp_path: Path) -> Settings:
     return settings.model_copy(update={"eval_dir": tmp_path / "eval"})
 
 
+def committed_summary(state: Settings) -> dict[str, Any]:
+    path = state.eval_dir / gate.RESULTS_DIR / runner.SUMMARY_FILE
+    return dict(json.loads(path.read_text()))
+
+
 async def run_gate(state: Settings) -> list[gate.Finding]:
     return await gate.run(state, state.eval_dir / "README.md")
 
@@ -231,7 +236,11 @@ async def test_a_search_that_got_worse_fails_on_retrieval_and_on_stale_recording
 
     failed = failures(await run_gate(state))
 
-    assert any(message.startswith("retrieval hybrid recall_at_5: 0.7632") for message in failed)
+    # Without the vector ranking the hybrid search is the full-text search.
+    fulltext = committed_summary(state)["retrieval"]["fulltext"]["recall_at_5"]
+    assert any(
+        message.startswith(f"retrieval hybrid recall_at_5: {fulltext} ") for message in failed
+    )
     assert any(message.startswith("replay: hybrid-haiku, incident T") for message in failed)
     assert not any("vector" in message or "fulltext" in message for message in failed)
 
@@ -253,7 +262,7 @@ async def test_a_changed_prompt_fails_as_stale_without_touching_retrieval(
 async def test_a_number_edited_in_the_results_fails(state: Settings) -> None:
     path = state.eval_dir / gate.RESULTS_DIR / runner.SUMMARY_FILE
     edited = json.loads(path.read_text())
-    edited["variants"]["hybrid-haiku"]["root_cause_accuracy"] = 1.0
+    edited["variants"]["hybrid-haiku"]["root_cause_accuracy"] = 0.5
     path.write_text(json.dumps(edited, indent=2) + "\n")
 
     failed = failures(await run_gate(state))
@@ -285,17 +294,17 @@ async def test_results_below_the_baseline_fail_until_a_new_baseline_is_accepted(
 ) -> None:
     path = state.eval_dir / gate.BASELINE_FILE
     baseline = json.loads(path.read_text())
-    accuracy = baseline["variants"]["hybrid-haiku"]["root_cause_accuracy"]
+    measured = committed_summary(state)["variants"]["vector-haiku"]["root_cause_accuracy"]
+    assert measured < 0.99
+    accuracy = baseline["variants"]["vector-haiku"]["root_cause_accuracy"]
     accuracy["baseline"], accuracy["min"] = 1.0, 0.99
     path.write_text(json.dumps(baseline))
 
-    failed = failures(await run_gate(state))
+    assert failures(await run_gate(state)) == [
+        f"vector-haiku root_cause_accuracy: {measured} (baseline 1.0, minimum 0.99)"
+    ]
 
-    assert len(failed) == 1
-    assert failed[0].startswith("hybrid-haiku root_cause_accuracy: 0.9737 (baseline 1.0")
-
-    summary_file = state.eval_dir / gate.RESULTS_DIR / runner.SUMMARY_FILE
-    path.write_text(json.dumps(gate.make_baseline(json.loads(summary_file.read_text()))))
+    path.write_text(json.dumps(gate.make_baseline(committed_summary(state))))
     assert failures(await run_gate(state)) == []
 
 
@@ -316,3 +325,12 @@ async def test_a_recording_that_was_deleted_fails_as_stale(state: Settings) -> N
 
     assert len(failed) == 1
     assert failed[0].startswith("replay: hybrid-sonnet, incident T")
+
+
+async def test_results_with_an_attempt_that_got_no_response_fail(state: Settings) -> None:
+    errors = state.eval_dir / gate.RESULTS_DIR / runner.ERRORS_FILE
+    errors.write_text('{"variant": "hybrid-haiku", "case_id": "T01", "rep": 0}\n')
+
+    assert failures(await run_gate(state)) == [
+        "results: errors.jsonl lists attempts that got no response"
+    ]

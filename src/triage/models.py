@@ -93,7 +93,6 @@ class Label(BaseModel):
     category: Category
     doc_ids: list[str]
     presentation: Literal["signature", "paraphrase", "downstream"]
-    transparency: Literal["transparent", "opaque"] | None
     service: str
     background_fault: str | None = Field(
         default=None,

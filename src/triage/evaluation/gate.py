@@ -189,6 +189,16 @@ async def run(settings: Settings, readme: Path | None) -> list[Finding]:
         verb = "is" if same else "is not"
         findings.append(Finding(same, f"results: {name} {verb} what the replay computes{detail}"))
 
+    # A paid run writes this file only when an attempt got no response at all.
+    unanswered = (results_dir / runner.ERRORS_FILE).exists()
+    findings.append(
+        Finding(
+            not unanswered, f"results: {runner.ERRORS_FILE} is absent, so every attempt answered"
+        )
+        if not unanswered
+        else Finding(False, f"results: {runner.ERRORS_FILE} lists attempts that got no response")
+    )
+
     summary = json.loads((results_dir / runner.SUMMARY_FILE).read_text(encoding="utf-8"))
     findings += variant_findings(summary, baseline)
     findings.append(control_finding(summary))
