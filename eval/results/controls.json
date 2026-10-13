@@ -1,0 +1,1010 @@
+[
+  {
+    "name": "F01:incident_report",
+    "kind": "incident_report",
+    "expected": true,
+    "supported": true,
+    "reason": "The stated cause (half-open connections to the old cart-cache primary in checkout-api's pool of 40, never evicted, so requests wait until acquire timeout) matches the root cause in INC-2025-0354 for the same system, and it makes no claim about the current incident that the incident contradicts or lacks."
+  },
+  {
+    "name": "F01:runbook_section",
+    "kind": "runbook_section",
+    "expected": true,
+    "supported": true,
+    "reason": "The runbook RB-checkout-api-01 for checkout-api states this exact mechanism: half-open connections to the old cart-cache primary filling the pool of 40 until the acquire timeout. The answer says nothing about the current incident beyond what is in it."
+  },
+  {
+    "name": "F01:says_what_it_saw",
+    "kind": "says_what_it_saw",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident INC-2025-0354 states this same mechanism for checkout-api: half-open connections to the old cart-cache primary stayed in the pool of 40 and requests waited until the acquire timeout, and the ticket does say the button spins for a few seconds and then errors."
+  },
+  {
+    "name": "F01:other_fault",
+    "kind": "other_fault",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited incident describes a checkout-api release that swapped batched tax calculation for per-line-item lookups, not half-open connections left in the pool after a cart-cache failover, so the stated mechanism does not appear in the document."
+  },
+  {
+    "name": "F01:no_mechanism",
+    "kind": "no_mechanism",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document is an overview runbook that describes no failure mechanism, so the claims about a cart-cache failover, stale half-open connections and a pool of 40 have no support in it."
+  },
+  {
+    "name": "F01:adds_a_fact",
+    "kind": "adds_a_fact",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited incident INC-2025-0354 supports the pool-exhaustion mechanism after the cart-cache failover, but the claim that a kernel upgrade halved host network throughput and turned the fault into an outage appears in neither the cited document nor the incident."
+  },
+  {
+    "name": "F02:incident_report",
+    "kind": "incident_report",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident INC-2025-0081 for checkout-api gives exactly this cause: a release swapped the batched tax calculation for one tax-service lookup per line item, so PlaceOrder latency grew with basket size, and the answer adds no claims about the current incident beyond what its ticket and logs show."
+  },
+  {
+    "name": "F02:runbook_section",
+    "kind": "runbook_section",
+    "expected": true,
+    "supported": true,
+    "reason": "The runbook for checkout-api states exactly this mechanism (per-line-item tax lookups replacing batched calculation, latency scaling with basket size), and the answer claims nothing about the incident beyond that."
+  },
+  {
+    "name": "F02:says_what_it_saw",
+    "kind": "says_what_it_saw",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident INC-2025-0081 states the same mechanism for checkout-api: per-line-item tax lookups replaced the batched calculation, so latency scaled with basket size. The incident claim matches the ticket text."
+  },
+  {
+    "name": "F02:other_fault",
+    "kind": "other_fault",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document blames a feature flag that left orders stuck in PENDING_REVIEW, and says nothing about a release that replaced batched tax calculation with per-line-item tax lookups, so the stated mechanism has no support."
+  },
+  {
+    "name": "F02:no_mechanism",
+    "kind": "no_mechanism",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document is an overview runbook that names the tax-service dependency but describes no failure mechanism, so the claimed release that replaced batched tax calculation with per-line-item lookups has no support in it."
+  },
+  {
+    "name": "F02:adds_a_fact",
+    "kind": "adds_a_fact",
+    "expected": false,
+    "supported": false,
+    "reason": "The per-line-item tax lookup mechanism is stated in INC-2025-0081 for checkout-api, but the claim that a kernel upgrade halved network throughput and turned the fault into an outage is in neither the cited document nor the incident."
+  },
+  {
+    "name": "F03:incident_report",
+    "kind": "incident_report",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident INC-2025-0371 for checkout-api gives exactly this mechanism: the checkout.async_fraud_check flag was switched on in production and orders wait for a fraud-review callback that no service sends, and the stated cause claims nothing about the current incident beyond what the incident shows."
+  },
+  {
+    "name": "F03:runbook_section",
+    "kind": "runbook_section",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited checkout-api runbook states exactly this mechanism (the async fraud check flag switched on in production, so orders wait for a fraud-review callback that is never sent), and the answer makes no claims about the incident beyond it."
+  },
+  {
+    "name": "F03:says_what_it_saw",
+    "kind": "says_what_it_saw",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident INC-2025-0371 for checkout-api states this exact mechanism: the async fraud flag was switched on in production and orders wait for a fraud-review callback that nothing sends, and the incident detail the answer gives is the alert text verbatim."
+  },
+  {
+    "name": "F03:other_fault",
+    "kind": "other_fault",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document covers a checkout-api cart-cache connection pool exhaustion after a failover, and it says nothing about the checkout.async_fraud_check feature flag or a fraud-review callback that no service sends."
+  },
+  {
+    "name": "F03:no_mechanism",
+    "kind": "no_mechanism",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document is an overview runbook for checkout-api that describes no failure mechanism, so it does not support the feature flag checkout.async_fraud_check or the missing fraud-review callback."
+  },
+  {
+    "name": "F03:adds_a_fact",
+    "kind": "adds_a_fact",
+    "expected": false,
+    "supported": false,
+    "reason": "The flag and missing-callback mechanism is in INC-2025-0371, but the claim that a kernel upgrade halved network throughput and turned the fault into an outage appears in neither the cited document nor the incident."
+  },
+  {
+    "name": "F04:incident_report",
+    "kind": "incident_report",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident report for payments-gateway states that Meridian Acquiring limits the merchant account to 300 authorisations per second, answers traffic above that with R29 declines, and that the gateway logs these as PGW-4012, which matches the stated cause, and the answer makes no claim about the current incident's logs."
+  },
+  {
+    "name": "F04:runbook_section",
+    "kind": "runbook_section",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited runbook for payments-gateway states the same mechanism, namely Meridian Acquiring's 300 authorisations per second limit answered with R29 declines that the gateway logs as PGW-4012, and the answer claims nothing about the incident's logs."
+  },
+  {
+    "name": "F04:says_what_it_saw",
+    "kind": "says_what_it_saw",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident report for payments-gateway states the same mechanism: Meridian's 300 authorisations per second limit, with R29 declines logged as PGW-4012. The claim about the current incident restates the ticket, so it is supported."
+  },
+  {
+    "name": "F04:other_fault",
+    "kind": "other_fault",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document describes an expired mutual TLS client certificate causing handshake failures, not a 300 authorisations-per-second rate limit with R29 declines logged as PGW-4012, and the incident logs show no PGW-4012 either."
+  },
+  {
+    "name": "F04:no_mechanism",
+    "kind": "no_mechanism",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited runbook overview only says the gateway authorises through Meridian Acquiring and mentions no 300/s limit, R29 declines or PGW-4012, and the incident logs show 402s but no PGW-4012, so the stated mechanism is in neither the document nor the incident."
+  },
+  {
+    "name": "F04:adds_a_fact",
+    "kind": "adds_a_fact",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited incident report supports the Meridian 300/s limit, the R29 declines and their logging as PGW-4012, but the kernel upgrade that halved network throughput appears in neither the document nor the incident."
+  },
+  {
+    "name": "F05:incident_report",
+    "kind": "incident_report",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident INC-2025-0489 states the same mechanism for payments-gateway, an expired mutual TLS client certificate that Meridian rejected with alert 45, and the answer makes no claims about the current incident that are absent from it."
+  },
+  {
+    "name": "F05:runbook_section",
+    "kind": "runbook_section",
+    "expected": true,
+    "supported": true,
+    "reason": "The runbook for payments-gateway states this exact mechanism, an expired mTLS client certificate presented to Meridian Acquiring that is rejected with alert 45, and the answer makes no claim about the incident beyond what the runbook says."
+  },
+  {
+    "name": "F05:says_what_it_saw",
+    "kind": "says_what_it_saw",
+    "expected": true,
+    "supported": true,
+    "reason": "The stated mechanism (the payments-gateway mTLS client certificate to Meridian expired and Meridian rejected the handshake with alert 45) matches INC-2025-0489 word for word, and the only claim about the current incident is the alert text, which matches the incident alert."
+  },
+  {
+    "name": "F05:other_fault",
+    "kind": "other_fault",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited document describes exhaustion of the ledger connection pool on the capture path and says nothing about a client certificate expiring or a mutual TLS handshake being rejected with alert 45, so the stated mechanism is not in the cited documents."
+  },
+  {
+    "name": "F05:no_mechanism",
+    "kind": "no_mechanism",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document is an overview runbook that says payments-gateway authorises through Meridian Acquiring, but it describes no certificate expiry, mutual TLS or alert 45 rejection, and the incident does not show these either."
+  },
+  {
+    "name": "F05:adds_a_fact",
+    "kind": "adds_a_fact",
+    "expected": false,
+    "supported": false,
+    "reason": "The certificate-expiry mechanism matches INC-2025-0489, but the claim that a kernel upgrade halved network throughput and turned the fault into an outage is in neither the cited document nor the incident."
+  },
+  {
+    "name": "F06:incident_report",
+    "kind": "incident_report",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident report for payments-gateway states the same mechanism word for word: the 60-connection pool was exhausted by transactions held open on the capture path, and captures queued until they timed out; the current incident's alert and PGW-3301 logs match."
+  },
+  {
+    "name": "F06:runbook_section",
+    "kind": "runbook_section",
+    "expected": true,
+    "supported": true,
+    "reason": "The runbook for payments-gateway states the same mechanism verbatim (the pooler's 60 server connections being used up by transactions held open on the capture path, so captures queue until they time out), and the incident's alert and PGW-3301 cl_waiting logs match it."
+  },
+  {
+    "name": "F06:says_what_it_saw",
+    "kind": "says_what_it_saw",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident report for payments-gateway gives the same mechanism: a 60-connection ledger pooler exhausted by transactions held open on the capture path, with captures queuing until they timed out, and the alert the answer quotes appears in the incident."
+  },
+  {
+    "name": "F06:other_fault",
+    "kind": "other_fault",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited document describes an acquirer rate limit causing R29 declines, not a ledger connection pooler with 60 server connections being exhausted, so the stated mechanism is in neither the documents nor the incident."
+  },
+  {
+    "name": "F06:no_mechanism",
+    "kind": "no_mechanism",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited runbook only describes the gateway writing to the ledger through the connection pooler, and nothing cited states the 60-connection limit, transactions held open on the capture path, or pool exhaustion as a failure mechanism."
+  },
+  {
+    "name": "F06:adds_a_fact",
+    "kind": "adds_a_fact",
+    "expected": false,
+    "supported": false,
+    "reason": "The pool exhaustion mechanism matches INC-2025-0251, but the claim that a kernel upgrade halved network throughput appears in neither the cited document nor the incident."
+  },
+  {
+    "name": "F07:incident_report",
+    "kind": "incident_report",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident INC-2025-0243 for ledger-service states the same mechanism, settle-batch's exclusive lock on settlements causing writes to be cancelled at the five-second timeout, and the current logs show the matching LDG-7741 cancellations on rel=settlements."
+  },
+  {
+    "name": "F07:runbook_section",
+    "kind": "runbook_section",
+    "expected": true,
+    "supported": true,
+    "reason": "The runbook for ledger-service states this exact mechanism, settle-batch taking an exclusive lock on settlements and writes being cancelled at the 5s lock timeout, and the incident logs show the matching LDG-7741 cancellations on rel=settlements."
+  },
+  {
+    "name": "F07:says_what_it_saw",
+    "kind": "says_what_it_saw",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident report for ledger-service gives the same mechanism: settle-batch holds an exclusive lock on settlements and ledger writes are cancelled at the five-second timeout, and the alert quoted in the answer matches the incident."
+  },
+  {
+    "name": "F07:other_fault",
+    "kind": "other_fault",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document attributes a ledger write failure to a WAL volume filled by an unused replication slot, and it says nothing of a settle-batch job, an exclusive lock on settlements, or lock timeouts."
+  },
+  {
+    "name": "F07:no_mechanism",
+    "kind": "no_mechanism",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document is an overview runbook with no failure mechanism, and it never mentions the settle-batch job, its exclusive lock on settlements, or the lock timeout, so the stated cause rests on nothing cited."
+  },
+  {
+    "name": "F07:adds_a_fact",
+    "kind": "adds_a_fact",
+    "expected": false,
+    "supported": false,
+    "reason": "The lock mechanism is in INC-2025-0243, but the kernel upgrade that halved network throughput appears in neither the cited document nor the incident, and the answer states it as part of the cause."
+  },
+  {
+    "name": "F08:incident_report",
+    "kind": "incident_report",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited ledger-service incident gives exactly this mechanism, an undropped replication slot for a decommissioned analytics replica that retained WAL until the volume filled, and the answer makes no claim about the current incident beyond the documents."
+  },
+  {
+    "name": "F08:runbook_section",
+    "kind": "runbook_section",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited ledger-service runbook states exactly this mechanism, an undropped replication slot for a decommissioned analytics replica that retained WAL until the volume filled, and the answer makes no claims about the incident beyond it."
+  },
+  {
+    "name": "F08:says_what_it_saw",
+    "kind": "says_what_it_saw",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited ledger-service incident gives the same mechanism, an undropped replication slot for a decommissioned replica that retained WAL until the WAL volume filled, and the answer's claim that writes fail while reads work matches the ticket."
+  },
+  {
+    "name": "F08:other_fault",
+    "kind": "other_fault",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited document describes pods being OOM-killed by a memory-heavy statement export, not an orphaned replication slot retaining WAL until the WAL volume filled, so the stated mechanism appears in no cited document."
+  },
+  {
+    "name": "F08:no_mechanism",
+    "kind": "no_mechanism",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document is an overview runbook that names no failure mechanism, so nothing in the citations supports the claims about an undropped replication slot retaining WAL until the WAL volume filled."
+  },
+  {
+    "name": "F08:adds_a_fact",
+    "kind": "adds_a_fact",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited incident supports the orphaned replication slot filling the WAL volume, but the claim that a kernel upgrade halved network throughput and turned the fault into an outage appears in neither the cited document nor the incident."
+  },
+  {
+    "name": "F09:incident_report",
+    "kind": "incident_report",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited INC-2025-0457 for ledger-service states this exact mechanism: the statement export loads full merchant history into memory, exceeds the 8 GB pod limit, and the kernel kills the worker."
+  },
+  {
+    "name": "F09:runbook_section",
+    "kind": "runbook_section",
+    "expected": true,
+    "supported": true,
+    "reason": "The stated cause matches the runbook RB-ledger-service-03 almost word for word for the same system, ledger-service, and it makes no claim about the incident beyond that mechanism."
+  },
+  {
+    "name": "F09:says_what_it_saw",
+    "kind": "says_what_it_saw",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited INC-2025-0457 states the same ledger-service mechanism (statement export loads the full history into memory, exceeds the 8 GB limit, and the kernel kills the worker), and the only claim about the current incident is the alert text, which matches the incident."
+  },
+  {
+    "name": "F09:other_fault",
+    "kind": "other_fault",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited incident describes lock contention from the settle-batch job on the settlements table, not memory exhaustion during statement export, so the stated mechanism (loading full history, exceeding 8 GB, OOM kill) is in neither the document nor the incident."
+  },
+  {
+    "name": "F09:no_mechanism",
+    "kind": "no_mechanism",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document is an overview runbook with no failure mechanism, and neither it nor the incident mentions the in-memory export, the 8 GB limit or the kernel kills."
+  },
+  {
+    "name": "F09:adds_a_fact",
+    "kind": "adds_a_fact",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited incident supports the export memory-exhaustion mechanism on ledger-service, but the claim that a kernel upgrade halved network throughput and turned the fault into an outage appears in neither the document nor the incident."
+  },
+  {
+    "name": "F10:incident_report",
+    "kind": "incident_report",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident INC-2025-0038 for catalog-search states exactly this mechanism, a wildcard search on the description field loading field data into heap until the parent breaker rejects requests, and the current logs show the same parent breaker rejection."
+  },
+  {
+    "name": "F10:runbook_section",
+    "kind": "runbook_section",
+    "expected": true,
+    "supported": true,
+    "reason": "The runbook RB-catalog-search-01 for catalog-search states the same mechanism: a wildcard search on the description field loaded field data into heap until the parent breaker rejected requests, and the incident's alert and CAT-6610 parent breaker log lines match it."
+  },
+  {
+    "name": "F10:says_what_it_saw",
+    "kind": "says_what_it_saw",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident INC-2025-0038 for catalog-search states the same mechanism (a wildcard search on the description field loaded field data into heap until the parent breaker rejected requests), and the alert quoted in the stated cause matches the current incident's alert."
+  },
+  {
+    "name": "F10:other_fault",
+    "kind": "other_fault",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited incident describes a disk flood-stage watermark making indices read-only, not a wildcard query that loads field data into the heap and trips the parent circuit breaker, so the stated mechanism is not in the cited document."
+  },
+  {
+    "name": "F10:no_mechanism",
+    "kind": "no_mechanism",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document is an overview runbook that names no failure mechanism, so the wildcard field-data heap exhaustion mechanism has no support in the citations."
+  },
+  {
+    "name": "F10:adds_a_fact",
+    "kind": "adds_a_fact",
+    "expected": false,
+    "supported": false,
+    "reason": "The wildcard field-data heap exhaustion and parent breaker mechanism is supported by INC-2025-0038, but the claim that a kernel upgrade halved network throughput and turned the fault into an outage appears in neither the cited document nor the incident."
+  },
+  {
+    "name": "F11:incident_report",
+    "kind": "incident_report",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident INC-2025-0206 for catalog-search states the same mechanism: the flood-stage disk watermark was passed and every index was marked read-only, which rejects writes, and the answer claims nothing about the current incident beyond that mechanism."
+  },
+  {
+    "name": "F11:runbook_section",
+    "kind": "runbook_section",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited catalog-search runbook states exactly this mechanism, data nodes passing the 95% flood-stage watermark so every index goes read-only and rejects writes, and the answer claims nothing about the incident beyond that."
+  },
+  {
+    "name": "F11:says_what_it_saw",
+    "kind": "says_what_it_saw",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited catalog-search incident report states the same mechanism, flood-stage disk watermark at 95% causing all indices to go read-only and reject writes, and the incident claim only restates the alert."
+  },
+  {
+    "name": "F11:other_fault",
+    "kind": "other_fault",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited document describes a malformed synonym set that broke analyzer reloads, not a disk flood-stage watermark that made the indices read-only, so the stated mechanism is not in the cited material."
+  },
+  {
+    "name": "F11:no_mechanism",
+    "kind": "no_mechanism",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited runbook only gives an overview of catalog-search and describes no failure mechanism, so it does not mention a flood-stage disk watermark or read-only indices, and the incident shows 403 rejections but no disk usage."
+  },
+  {
+    "name": "F11:adds_a_fact",
+    "kind": "adds_a_fact",
+    "expected": false,
+    "supported": false,
+    "reason": "The flood-stage watermark and read-only index mechanism is documented for catalog-search, but the claim that a kernel upgrade halved network throughput and turned the fault into an outage appears in neither the cited document nor the incident."
+  },
+  {
+    "name": "F12:incident_report",
+    "kind": "incident_report",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident report for catalog-search states exactly this mechanism (malformed synonym rule, analyzer reload failure, zero matches), and the incident logs show the same CAT-6405 analyzer reload failure and zero-hit searches."
+  },
+  {
+    "name": "F12:runbook_section",
+    "kind": "runbook_section",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited catalog-search runbook states this exact mechanism: a malformed synonym rule in a new set made the analyzer reload fail, so filtered queries matched nothing; the incident's alert and CAT-6405 logs match it."
+  },
+  {
+    "name": "F12:says_what_it_saw",
+    "kind": "says_what_it_saw",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident for catalog-search gives exactly this mechanism: a malformed synonym set rule made the analyzer reload fail, so synonym-filtered queries matched nothing. The current incident's alert and its CAT-6405 analyzer reload failure logs match what the answer says about it."
+  },
+  {
+    "name": "F12:other_fault",
+    "kind": "other_fault",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited incident describes heap exhaustion from wildcard field-data loading that tripped the circuit breaker, not a malformed synonym set that failed the analyzer reload, so the stated mechanism is not in the cited document."
+  },
+  {
+    "name": "F12:no_mechanism",
+    "kind": "no_mechanism",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document is an overview runbook with no failure mechanism, so the malformed-synonym-rule and analyzer-reload cause has no support in the cited documents, even though the logs show reload errors."
+  },
+  {
+    "name": "F12:adds_a_fact",
+    "kind": "adds_a_fact",
+    "expected": false,
+    "supported": false,
+    "reason": "The synonym-set mechanism is supported by INC-2025-0388, but the claim that a kernel upgrade halved network throughput and turned the fault into an outage is in neither the cited document nor the incident."
+  },
+  {
+    "name": "F13:incident_report",
+    "kind": "incident_report",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident report for notify-worker gives the same mechanism: a missing attachment made the worker throw before it acknowledged the message, and the broker redelivered it to every worker in turn. The current incident's alert and its NTF-8102 redelivery logs match what that report describes."
+  },
+  {
+    "name": "F13:runbook_section",
+    "kind": "runbook_section",
+    "expected": true,
+    "supported": true,
+    "reason": "The runbook for notify-worker states the same mechanism (a missing attachment makes the worker throw before ack, then redelivery stalls the queue), and the incident's alert and NTF-8102 redelivery logs match it."
+  },
+  {
+    "name": "F13:says_what_it_saw",
+    "kind": "says_what_it_saw",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited INC-2025-0552 for notify-worker states the same mechanism, a missing attachment causing the worker to throw before ack and redelivery stalling the queue, and the alert text matches the incident."
+  },
+  {
+    "name": "F13:other_fault",
+    "kind": "other_fault",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited document describes SMS provider rate limiting (429 throttling) for notify-worker, not a missing-attachment poison message causing redelivery and a queue stall, so the stated mechanism is not in the cited documents."
+  },
+  {
+    "name": "F13:no_mechanism",
+    "kind": "no_mechanism",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document is an overview runbook that describes no failure mechanism, so the missing attachment and the redelivery stall come from neither the documents nor the incident."
+  },
+  {
+    "name": "F13:adds_a_fact",
+    "kind": "adds_a_fact",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited incident supports the poison-message redelivery stall on notify-worker, but the claim that a kernel upgrade halved network throughput and turned the fault into an outage appears in neither the document nor the incident."
+  },
+  {
+    "name": "F14:incident_report",
+    "kind": "incident_report",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident INC-2025-0417 for notify-worker states the same mechanism nearly verbatim: the 50 msg/s Tessel SMS cap was consumed by a bulk send through the transactional sender, so one-time codes were throttled with 429s, and the stated cause makes no claim about the current incident that the incident contradicts."
+  },
+  {
+    "name": "F14:runbook_section",
+    "kind": "runbook_section",
+    "expected": true,
+    "supported": true,
+    "reason": "The runbook for notify-worker states exactly this mechanism: the Tessel SMS 50/s cap was used up by a bulk send through the transactional sender, and one-time codes were throttled with 429s, and the answer makes no claims about the incident beyond the documents."
+  },
+  {
+    "name": "F14:says_what_it_saw",
+    "kind": "says_what_it_saw",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident INC-2025-0417 for notify-worker states the same mechanism word for word: the Tessel 50/s cap was used up by a bulk send through the transactional sender, so one-time codes were throttled with 429s, and the incident part quotes the alert accurately."
+  },
+  {
+    "name": "F14:other_fault",
+    "kind": "other_fault",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited incident describes DNS resolver failure preventing email sends via the SMTP relay, not Tessel SMS rate limits, bulk sends, or 429 throttling, so the stated mechanism appears in none of the cited documents."
+  },
+  {
+    "name": "F14:no_mechanism",
+    "kind": "no_mechanism",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited runbook only says that notify-worker sends SMS through Tessel and describes no failure mechanism, so the 50/s cap, the bulk send through the transactional sender and the 429 throttling are in neither the document nor the incident."
+  },
+  {
+    "name": "F14:adds_a_fact",
+    "kind": "adds_a_fact",
+    "expected": false,
+    "supported": false,
+    "reason": "The rate-limit mechanism is stated in INC-2025-0417, but the claim about a kernel upgrade halving host network throughput appears in neither the cited document nor the incident."
+  },
+  {
+    "name": "F15:incident_report",
+    "kind": "incident_report",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident INC-2025-0114 for notify-worker states the same mechanism: the resolvers failed for larkhill.internal, the SMTP relay name could not be resolved, and no connection was opened. The answer claims nothing about the current incident beyond the cause itself."
+  },
+  {
+    "name": "F15:runbook_section",
+    "kind": "runbook_section",
+    "expected": true,
+    "supported": true,
+    "reason": "The runbook for notify-worker states the same mechanism nearly verbatim (the resolvers could not answer for larkhill.internal, so the SMTP relay name could not be resolved and no connection was opened), and the answer makes no claims about the incident beyond the cause itself."
+  },
+  {
+    "name": "F15:says_what_it_saw",
+    "kind": "says_what_it_saw",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident INC-2025-0114 states the same mechanism for notify-worker: the resolvers could not answer for larkhill.internal, so the SMTP relay name could not be resolved; the claim that no emails go out and every attempt logs an error matches the ticket."
+  },
+  {
+    "name": "F15:other_fault",
+    "kind": "other_fault",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited incident describes a poison message with a missing attachment that stalled the queue, not a DNS resolution failure for the larkhill.internal zone or the SMTP relay name, so the stated mechanism appears in neither the documents nor the incident."
+  },
+  {
+    "name": "F15:no_mechanism",
+    "kind": "no_mechanism",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited runbook only gives an overview of notify-worker and describes no DNS or resolver failure mechanism, and neither the incident nor the document mentions the larkhill.internal zone failing to resolve."
+  },
+  {
+    "name": "F15:adds_a_fact",
+    "kind": "adds_a_fact",
+    "expected": false,
+    "supported": false,
+    "reason": "The DNS resolver mechanism comes from INC-2025-0114, but the claim that a kernel upgrade halved network throughput and turned the fault into an outage appears in neither the cited document nor the incident."
+  },
+  {
+    "name": "F16:incident_report",
+    "kind": "incident_report",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident INC-2025-0060 for auth-service states exactly this mechanism: an expired signing key was removed from the keyset, the service kept signing with it because rotation had not run, and other services rejected the tokens; the answer makes no claims about the current incident beyond this."
+  },
+  {
+    "name": "F16:runbook_section",
+    "kind": "runbook_section",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited auth-service runbook states exactly this mechanism (an expired signing key removed from the keyset while the stale rotation job kept it in use), and the answer claims nothing about the incident's logs beyond that."
+  },
+  {
+    "name": "F16:says_what_it_saw",
+    "kind": "says_what_it_saw",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident INC-2025-0060 states the same mechanism for auth-service: tokens kept being signed with an expired key that had been removed from the keyset because rotation had not run, so other services rejected them. The answer's only claim about the current incident is the alert text, which matches the incident."
+  },
+  {
+    "name": "F16:other_fault",
+    "kind": "other_fault",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document describes a Safari cookie SameSite/Secure misconfiguration and says nothing about an expired signing key, keyset removal, or a rotation job that did not run."
+  },
+  {
+    "name": "F16:no_mechanism",
+    "kind": "no_mechanism",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document is an overview runbook for auth-service that describes no failure mechanism, so the claims about an expired signing key, its removal from the keyset and a rotation job that had not run are not supported."
+  },
+  {
+    "name": "F16:adds_a_fact",
+    "kind": "adds_a_fact",
+    "expected": false,
+    "supported": false,
+    "reason": "The signing-key expiry mechanism is in INC-2025-0060 for auth-service, but the claim that a kernel upgrade halved network throughput and turned the fault into an outage appears in neither the cited document nor the incident."
+  },
+  {
+    "name": "F17:incident_report",
+    "kind": "incident_report",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited past incident INC-2025-0314 for auth-service states exactly this mechanism: a SameSite=None cookie without Secure, which Safari drops, causing the callback to redirect back to login, and the answer claims nothing about the current incident beyond what the incident shows."
+  },
+  {
+    "name": "F17:runbook_section",
+    "kind": "runbook_section",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited auth-service runbook gives the same mechanism for the same system: a release set the session cookie to SameSite=None without Secure, Safari drops it, and the callback redirects back to login. The answer claims nothing about the incident beyond the cause."
+  },
+  {
+    "name": "F17:says_what_it_saw",
+    "kind": "says_what_it_saw",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident INC-2025-0314 states this exact mechanism for auth-service: a SameSite=None cookie without Secure is dropped by Safari, which causes login callback redirect loops, and the incident claim (the edge-proxy alert involving auth-service) matches the alert."
+  },
+  {
+    "name": "F17:other_fault",
+    "kind": "other_fault",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited incident covers login timeouts caused by user-db pool exhaustion during password rehashing, and it says nothing about SameSite cookie attributes, Safari dropping cookies, or redirect loops, so the stated mechanism is not in the cited documents."
+  },
+  {
+    "name": "F17:no_mechanism",
+    "kind": "no_mechanism",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document is an auth-service overview runbook that describes no failure mechanism, and nothing in the incident supports the SameSite=None cookie change or Safari dropping cookies, so the stated mechanism has no support."
+  },
+  {
+    "name": "F17:adds_a_fact",
+    "kind": "adds_a_fact",
+    "expected": false,
+    "supported": false,
+    "reason": "The SameSite=None cookie mechanism is supported by INC-2025-0314, but the claim that a kernel upgrade the night before halved the hosts' network throughput is in neither the cited document nor the incident."
+  },
+  {
+    "name": "F18:incident_report",
+    "kind": "incident_report",
+    "expected": true,
+    "supported": true,
+    "reason": "The stated cause, rehashing at login holding a user-db connection, with the 30-connection pool exhausted by a peak of old-hash logins, matches the root cause in INC-2025-0434 for auth-service, and it makes no claims about the current incident beyond the document."
+  },
+  {
+    "name": "F18:runbook_section",
+    "kind": "runbook_section",
+    "expected": true,
+    "supported": true,
+    "reason": "The runbook for auth-service gives the same mechanism: an in-request rehash holds user-db connections until all 30 in the pool are used and further logins time out, and the incident's login timeouts are in the ticket and logs."
+  },
+  {
+    "name": "F18:says_what_it_saw",
+    "kind": "says_what_it_saw",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited past incident for auth-service states this same mechanism: a password rehash at login holds a user-db connection, and 30 pool connections get exhausted at a login peak. The incident part of the answer only repeats the alert, which is in the incident."
+  },
+  {
+    "name": "F18:other_fault",
+    "kind": "other_fault",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document describes an expired signing key that was removed from the keyset, not password rehashing that holds user-db connections until the 30-connection pool is exhausted, so the stated mechanism is not in the cited documents."
+  },
+  {
+    "name": "F18:no_mechanism",
+    "kind": "no_mechanism",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document is an overview runbook that names no failure mechanism, so the password rehash holding user-db connections and the 30-connection pool being exhausted are not supported by anything cited."
+  },
+  {
+    "name": "F18:adds_a_fact",
+    "kind": "adds_a_fact",
+    "expected": false,
+    "supported": false,
+    "reason": "The rehash-holding-connection pool exhaustion mechanism is in INC-2025-0434, but the kernel upgrade halving network throughput, which the answer says turned the fault into an outage, is in neither the cited document nor the incident."
+  },
+  {
+    "name": "F19:incident_report",
+    "kind": "incident_report",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited inventory-sync incident states this exact mechanism: stock events are partitioned by warehouse, one warehouse's partition is overloaded and has a single consumer, so its updates queue for hours, and the answer claims nothing about the current incident beyond that."
+  },
+  {
+    "name": "F19:runbook_section",
+    "kind": "runbook_section",
+    "expected": true,
+    "supported": true,
+    "reason": "The runbook RB-inventory-sync-01 for inventory-sync states this exact mechanism: warehouse-partitioned stock events, one hot warehouse, and a single consumer per partition that falls hours behind; the answer makes no claim about the incident that is missing from it."
+  },
+  {
+    "name": "F19:says_what_it_saw",
+    "kind": "says_what_it_saw",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited inventory-sync incident states the exact mechanism (warehouse partitioning, one hot partition with a single consumer falling hours behind), and the answer's incident claim just restates the alert."
+  },
+  {
+    "name": "F19:other_fault",
+    "kind": "other_fault",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited document describes a database deadlock between the bulk import and reservations, not a hot warehouse partition with a single overwhelmed consumer, so the stated mechanism does not appear in it."
+  },
+  {
+    "name": "F19:no_mechanism",
+    "kind": "no_mechanism",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited runbook only describes what inventory-sync does and contains no failure mechanism, so the claims about warehouse partitioning, a hot warehouse and a single overwhelmed consumer are found in neither the documents nor the incident."
+  },
+  {
+    "name": "F19:adds_a_fact",
+    "kind": "adds_a_fact",
+    "expected": false,
+    "supported": false,
+    "reason": "The partition hot-spot mechanism is in INC-2025-0511 for inventory-sync, but the claim that a kernel upgrade halved network throughput and turned the fault into an outage appears in neither the cited document nor the incident."
+  },
+  {
+    "name": "F20:incident_report",
+    "kind": "incident_report",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited INC-2025-0195 for inventory-sync states this exact deadlock mechanism between the file-ordered bulk import and basket-ordered reservations, and the stated cause asserts nothing about the current incident beyond it."
+  },
+  {
+    "name": "F20:runbook_section",
+    "kind": "runbook_section",
+    "expected": true,
+    "supported": true,
+    "reason": "The stated cause matches the mechanism in runbook RB-inventory-sync-02 for inventory-sync: opposite lock ordering between the bulk import and reservations, causing deadlocks that abort reservations, and it makes no claim about the incident's logs beyond that."
+  },
+  {
+    "name": "F20:says_what_it_saw",
+    "kind": "says_what_it_saw",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited inventory-sync report states the same opposite-order locking deadlock mechanism between the bulk import and reservations, and the incident detail given (afternoon 'could not reserve your items' errors) appears in the ticket."
+  },
+  {
+    "name": "F20:other_fault",
+    "kind": "other_fault",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited document describes a location mapping table edit that caused feed rows to be skipped, not a deadlock between the bulk import and reservations locking rows in opposite order, so the stated mechanism is not in the cited document."
+  },
+  {
+    "name": "F20:no_mechanism",
+    "kind": "no_mechanism",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document is an overview of inventory-sync that names no failure mechanism, so neither the bulk import's opposite lock ordering nor the resulting deadlock is supported."
+  },
+  {
+    "name": "F20:adds_a_fact",
+    "kind": "adds_a_fact",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited incident supports the deadlock mechanism between the import and reservations, but the kernel upgrade that halved network throughput appears in neither the document nor the incident."
+  },
+  {
+    "name": "F21:incident_report",
+    "kind": "incident_report",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident INC-2025-0278 for inventory-sync states the same mechanism nearly verbatim: the mapping table was edited, the northern warehouse rows were replaced with a new code format, and old-code feed rows were skipped and read as zero stock, while the current incident's alert and logs match the signals described."
+  },
+  {
+    "name": "F21:runbook_section",
+    "kind": "runbook_section",
+    "expected": true,
+    "supported": true,
+    "reason": "The runbook for inventory-sync gives the same mechanism word for word: the location mapping table was edited with a new code format for the northern warehouse, so old-code rows were skipped and read as zero stock, and the incident's alert and INV-5611 logs for warehouse-north match its signals."
+  },
+  {
+    "name": "F21:says_what_it_saw",
+    "kind": "says_what_it_saw",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited inventory-sync incident states the same mechanism: the mapping table edit replaced the northern warehouse codes, so feed rows were skipped and read as zero stock, and the alert quoted is in the incident."
+  },
+  {
+    "name": "F21:other_fault",
+    "kind": "other_fault",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited incident describes consumer lag from a hot warehouse partition, not an edited location mapping table whose code format change caused rows to be skipped, so the stated mechanism is not in the cited document."
+  },
+  {
+    "name": "F21:no_mechanism",
+    "kind": "no_mechanism",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document is an overview runbook that describes no failure mechanism, so the claimed edit to the location mapping table and the replaced code format for the northern warehouse are not supported by it."
+  },
+  {
+    "name": "F21:adds_a_fact",
+    "kind": "adds_a_fact",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited incident supports the edit to the mapping table and the skipped rows, but the kernel upgrade that halved network throughput and turned the fault into an outage appears in neither the document nor the incident."
+  },
+  {
+    "name": "F22:incident_report",
+    "kind": "incident_report",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited incident INC-2025-0319 for edge-proxy states exactly this mechanism: the shop.larkhill.example certificate expired, the renewal client had stopped and there was no expiry alert, and the stated cause adds no claims about the current incident beyond that."
+  },
+  {
+    "name": "F22:runbook_section",
+    "kind": "runbook_section",
+    "expected": true,
+    "supported": true,
+    "reason": "The runbook RB-edge-proxy-01 for edge-proxy states exactly this mechanism (expired shop.larkhill.example certificate, stopped renewal client, no expiry alert), and the answer makes no claims about the incident beyond what it shows."
+  },
+  {
+    "name": "F22:says_what_it_saw",
+    "kind": "says_what_it_saw",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited past incident for edge-proxy states exactly this mechanism (an expired shop.larkhill.example certificate, a stopped renewal client and no expiry alert), and the ticket does contain the 'connection is not private' warning that the answer cites."
+  },
+  {
+    "name": "F22:other_fault",
+    "kind": "other_fault",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document describes stale internal DNS zone transfers that caused NXDOMAIN and 502s, and it says nothing about certificate expiry, a stopped renewal client or missing expiry alerts."
+  },
+  {
+    "name": "F22:no_mechanism",
+    "kind": "no_mechanism",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document is an overview runbook saying edge-proxy terminates TLS for shop.larkhill.example, and it describes no failure mechanism, so the certificate expiry, the stopped renewal client and the missing alerting are in neither the documents nor the incident."
+  },
+  {
+    "name": "F22:adds_a_fact",
+    "kind": "adds_a_fact",
+    "expected": false,
+    "supported": false,
+    "reason": "The certificate expiry and the stopped renewal client are in INC-2025-0319, but the kernel upgrade that halved network throughput appears in neither the cited document nor the incident."
+  },
+  {
+    "name": "F23:incident_report",
+    "kind": "incident_report",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited INC-2025-0149 for edge-proxy describes this same mechanism, stale resolvers lacking the checkout.larkhill.internal record and answering NXDOMAIN so edge-proxy had no upstream, and the stated cause claims nothing about the current incident beyond that."
+  },
+  {
+    "name": "F23:runbook_section",
+    "kind": "runbook_section",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited edge-proxy runbook states the same mechanism (stale resolvers without a zone transfer serving an old larkhill.internal zone with no checkout record, giving NXDOMAIN and no upstream), and the cause makes no claims about the incident beyond that."
+  },
+  {
+    "name": "F23:says_what_it_saw",
+    "kind": "says_what_it_saw",
+    "expected": true,
+    "supported": true,
+    "reason": "The stated mechanism (stale zone on the internal resolvers, NXDOMAIN for checkout.larkhill.internal, so edge-proxy has no upstream) matches the root cause in INC-2025-0149 for edge-proxy, and the only claim about the current incident is the alert text, which is present."
+  },
+  {
+    "name": "F23:other_fault",
+    "kind": "other_fault",
+    "expected": false,
+    "supported": false,
+    "reason": "The cited document describes an edge-proxy release that lowered the request header size limit, which caused 431 rejections, and it says nothing about stale resolver zones or NXDOMAIN for checkout.larkhill.internal, so the stated DNS mechanism has no support."
+  },
+  {
+    "name": "F23:no_mechanism",
+    "kind": "no_mechanism",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document is an edge-proxy overview that describes no failure mechanism, so nothing in the citations supports the stale zone transfers or the NXDOMAIN answers for checkout.larkhill.internal."
+  },
+  {
+    "name": "F23:adds_a_fact",
+    "kind": "adds_a_fact",
+    "expected": false,
+    "supported": false,
+    "reason": "The stale-zone NXDOMAIN mechanism appears in INC-2025-0149, but the claim that a kernel upgrade halved network throughput and turned the fault into an outage is in neither the cited document nor the incident."
+  },
+  {
+    "name": "F24:incident_report",
+    "kind": "incident_report",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited edge-proxy incident gives the same mechanism: a release lowered the header limit from 16 KB to 8 KB as the upgraded library's default, so users with many cookies were rejected with 431. The 431 responses and the limit=8192 log lines are in the current incident."
+  },
+  {
+    "name": "F24:runbook_section",
+    "kind": "runbook_section",
+    "expected": true,
+    "supported": true,
+    "reason": "The runbook for edge-proxy states exactly this mechanism (a release lowered the header limit from 16 KB to 8 KB via the library default, so cookie-heavy requests get 431), and the incident's alert and EDG-9212 logs match it."
+  },
+  {
+    "name": "F24:says_what_it_saw",
+    "kind": "says_what_it_saw",
+    "expected": true,
+    "supported": true,
+    "reason": "The cited edge-proxy incident states the same mechanism, a release that lowered the header limit to 8 KB and caused cookie-heavy requests to be rejected with 431, and the alert line the answer gives matches the current incident."
+  },
+  {
+    "name": "F24:other_fault",
+    "kind": "other_fault",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document describes an expired TLS certificate on edge-proxy, not a release that lowered the request header size limit, so the stated mechanism is not in the cited documents."
+  },
+  {
+    "name": "F24:no_mechanism",
+    "kind": "no_mechanism",
+    "expected": false,
+    "supported": false,
+    "reason": "The only cited document is an overview runbook that describes no failure mechanism, so the release lowering the header limit to the library default of 8 KB is not stated in any cited document, even though the logs do show limit=8192."
+  },
+  {
+    "name": "F24:adds_a_fact",
+    "kind": "adds_a_fact",
+    "expected": false,
+    "supported": false,
+    "reason": "The header-limit mechanism is supported by INC-2025-0528, but the claim that a kernel upgrade halved network throughput and turned the fault into an outage appears in neither the cited document nor the incident."
+  }
+]

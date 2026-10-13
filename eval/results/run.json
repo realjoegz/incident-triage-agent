@@ -1,0 +1,10 @@
+{
+  "finished": "2026-10-13T21:07:02+00:00",
+  "paid_usd": 3.7317,
+  "paid_calls": 1145,
+  "judge": "batch",
+  "anthropic_sdk": "1.13.0",
+  "searches": 114.0,
+  "search_ms_p50": 1.8,
+  "search_ms_p95": 4.58
+}

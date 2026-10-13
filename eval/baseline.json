@@ -1,0 +1,122 @@
+{
+  "retrieval": {
+    "vector": {
+      "recall_at_5": {
+        "baseline": 0.8947,
+        "min": 0.8747
+      },
+      "hit_at_5": {
+        "baseline": 0.9474,
+        "min": 0.9274
+      }
+    },
+    "fulltext": {
+      "recall_at_5": {
+        "baseline": 0.7895,
+        "min": 0.7695
+      },
+      "hit_at_5": {
+        "baseline": 0.9737,
+        "min": 0.9537
+      }
+    },
+    "hybrid": {
+      "recall_at_5": {
+        "baseline": 0.9298,
+        "min": 0.9098
+      },
+      "hit_at_5": {
+        "baseline": 1.0,
+        "min": 0.98
+      }
+    }
+  },
+  "variants": {
+    "none-haiku": {
+      "root_cause_accuracy": {
+        "baseline": 0.4298,
+        "min": 0.3798
+      },
+      "abstention_without_evidence": {
+        "baseline": 0.8333,
+        "min": 0.7333
+      },
+      "cost_usd_per_incident": {
+        "baseline": 0.000322,
+        "max": 0.000403
+      }
+    },
+    "vector-haiku": {
+      "root_cause_accuracy": {
+        "baseline": 0.5965,
+        "min": 0.5465
+      },
+      "abstention_without_evidence": {
+        "baseline": 1.0,
+        "min": 0.9
+      },
+      "citation_faithfulness": {
+        "baseline": 0.9487,
+        "min": 0.8987
+      },
+      "cost_usd_per_incident": {
+        "baseline": 0.00067,
+        "max": 0.000838
+      }
+    },
+    "fulltext-haiku": {
+      "root_cause_accuracy": {
+        "baseline": 0.5789,
+        "min": 0.5289
+      },
+      "abstention_without_evidence": {
+        "baseline": 1.0,
+        "min": 0.9
+      },
+      "citation_faithfulness": {
+        "baseline": 0.9103,
+        "min": 0.8603
+      },
+      "cost_usd_per_incident": {
+        "baseline": 0.00067,
+        "max": 0.000838
+      }
+    },
+    "hybrid-haiku": {
+      "root_cause_accuracy": {
+        "baseline": 0.6667,
+        "min": 0.6167
+      },
+      "abstention_without_evidence": {
+        "baseline": 1.0,
+        "min": 0.9
+      },
+      "citation_faithfulness": {
+        "baseline": 0.908,
+        "min": 0.858
+      },
+      "cost_usd_per_incident": {
+        "baseline": 0.000673,
+        "max": 0.000841
+      }
+    },
+    "hybrid-sonnet": {
+      "root_cause_accuracy": {
+        "baseline": 0.7895,
+        "min": 0.7395
+      },
+      "abstention_without_evidence": {
+        "baseline": 1.0,
+        "min": 0.9
+      },
+      "citation_faithfulness": {
+        "baseline": 0.9697,
+        "min": 0.9197
+      },
+      "cost_usd_per_incident": {
+        "baseline": 0.010333,
+        "max": 0.012916
+      }
+    }
+  }
+}

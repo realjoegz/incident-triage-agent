@@ -68,7 +68,8 @@ def interval(
     means.sort()
     low = means[int(0.025 * len(means))]
     high = means[int(0.975 * len(means)) - 1]
-    return [round(low, DECIMALS), round(high, DECIMALS)]
+    # Adding zero turns a rounded -0.0 into 0.0.
+    return [round(low, DECIMALS) + 0.0, round(high, DECIMALS) + 0.0]
 
 
 def paired(
