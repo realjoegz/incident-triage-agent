@@ -1,0 +1,66 @@
+[project]
+name = "incident-triage-agent"
+version = "0.1.0"
+description = "An incident triage agent with an evaluation harness"
+authors = [
+    { name = "realjoegz", email = "jevwos@gmail.com" }
+]
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=1.13.0",
+    "fastapi>=0.143.0",
+    "fastembed>=0.9.0",
+    "langgraph>=1.2.15",
+    "mcp>=2.3.0",
+    "numpy>=2.5.4",
+    "pgvector>=0.5.1",
+    "psycopg[binary,pool]>=3.3.6",
+    "pydantic>=2.14.1",
+    "pydantic-settings>=2.15.0",
+    "pyyaml>=6.0.3",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+triage = "triage.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.13.0,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "triage"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "mypy>=2.4.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.17.0",
+    "types-pyyaml>=6.0.12.20260906",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF", "PT", "C4"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+files = ["src", "tests"]
+
+[[tool.mypy.overrides]]
+module = ["fastembed.*", "pgvector.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]

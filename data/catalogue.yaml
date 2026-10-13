@@ -1,0 +1,685 @@
+# The fault catalogue of Larkhill, a fictional online shop.
+#
+# Everything here is invented for this repository. No service, code, vendor or incident
+# comes from a real system. `triage data generate` renders this file into the corpus
+# (data/corpus.jsonl), the incidents (data/incidents.jsonl) and their labels (data/labels.jsonl).
+#
+# A fault under `faults` is known: the corpus holds two past incidents and one runbook
+# section for it. `blip: true` marks a fault whose log line also turns up once in a while when
+# nothing is wrong (one declined card, one deadlock victim); the generator uses those lines as
+# background noise in the incidents of other services. A fault under `novel` has no document at all, so an incident made from
+# it has no supporting evidence and the right answer is to say so.
+
+services:
+  - name: checkout-api
+    overview: "checkout-api holds baskets and places orders. It calls cart-cache for basket state, payments-gateway for card payments, inventory-sync for stock reservations and the tax service for tax."
+    escalation: "The checkout on-call owns it. Dashboards: 'Checkout overview' and 'Checkout dependencies'."
+  - name: payments-gateway
+    overview: "payments-gateway authorises and captures card payments through Meridian Acquiring and writes every movement to the ledger through the ledger connection pooler."
+    escalation: "The payments on-call owns it. Meridian's operations desk is reached through the acquirer contact sheet. Dashboard: 'Gateway traffic'."
+  - name: ledger-service
+    overview: "ledger-service is the API in front of ledger-db, the PostgreSQL cluster that holds the ledger. One primary takes writes and two replicas serve reads."
+    escalation: "The ledger on-call owns the service and the database. Dashboards: 'Ledger writes' and 'Ledger database'."
+  - name: catalog-search
+    overview: "catalog-search serves product search from a search cluster of three data nodes. inventory-sync and the merchandising tool write product updates into it."
+    escalation: "The discovery on-call owns it. Dashboards: 'Search traffic' and 'Search cluster health'."
+  - name: notify-worker
+    overview: "notify-worker sends transactional email through the internal SMTP relay and text messages through Tessel SMS. Other services queue messages on email-tx and sms-tx."
+    escalation: "The messaging on-call owns it. Dashboard: 'Notification queues'."
+  - name: auth-service
+    overview: "auth-service handles login, registration and session tokens. It stores users in user-db and publishes the keyset that other services use to verify tokens."
+    escalation: "The identity on-call owns it. Dashboards: 'Login funnel' and 'Token verification'."
+  - name: inventory-sync
+    overview: "inventory-sync applies stock events from the warehouses, takes stock reservations from checkout-api and pushes stock levels to catalog-search."
+    escalation: "The supply on-call owns it. Dashboards: 'Stock pipeline' and 'Reservations'."
+  - name: edge-proxy
+    overview: "edge-proxy terminates TLS for shop.larkhill.example and routes requests to the internal services by path."
+    escalation: "The platform on-call owns it. Dashboards: 'Edge traffic' and 'Edge TLS'."
+
+faults:
+  - id: F01
+    service: checkout-api
+    category: connection_pool_exhaustion
+    transparency: transparent
+    title: "Adding to the basket fails with 503"
+    signature: "CHK-POOL-0417 cart-cache connection acquire timed out after 3000ms active=40 idle=0 waiting=212"
+    generic_log: "checkout-api POST /v1/cart/items status=503 dur=3004ms"
+    downstream: edge-proxy
+    downstream_log: "EDG-9305 upstream checkout-api returned 503 route=/v1/cart"
+    alert: "checkout-api: 503 rate above 2% on /v1/cart"
+    symptoms: "Adding items to the basket fails with 503 after a three-second wait, while orders for baskets that already exist are still placed."
+    tickets:
+      - "Shoppers say the Add to basket button spins for a few seconds and then shows an error. Baskets they built earlier still check out fine."
+      - "Support is getting reports that nothing can be added to the basket since about ten minutes ago. The page waits and then fails."
+    cause: "After a cart-cache failover, checkout-api kept half-open connections to the old primary in its pool. The pool of 40 never evicted them, so every request waited for a connection until the acquire timeout."
+    triggers:
+      - "a planned cart-cache failover during maintenance"
+      - "an unplanned restart of the cart-cache primary"
+    resolution: "Restarted the checkout-api pods to rebuild the pool, then enabled connection validation on borrow."
+    diagnose:
+      - "Check the pool gauges on 'Checkout dependencies': active at 40 with idle at 0 confirms exhaustion."
+      - "Look for a cart-cache failover or restart in the last hour."
+      - "Restart the checkout-api pods one zone at a time to rebuild the pool."
+
+  - id: F02
+    blip: true
+    service: checkout-api
+    category: code_regression
+    transparency: opaque
+    title: "Order placement slow for large baskets"
+    signature: "CHK-LAT-2210 handler=PlaceOrder p99=4800ms budget=1200ms tax_lookups=37"
+    generic_log: "checkout-api POST /v1/orders status=200 dur=4712ms"
+    downstream: edge-proxy
+    downstream_log: "EDG-9311 upstream checkout-api slow route=/v1/orders dur=4790ms"
+    alert: "checkout-api: PlaceOrder p99 latency above 3s"
+    symptoms: "Order placement succeeds but takes four to five seconds, and the delay grows with the number of line items in the order."
+    tickets:
+      - "Placing an order works but takes far longer than usual, and customers with big baskets wait the longest."
+      - "Checkout is slow at the final step. Small orders are a little slow and large ones take five seconds or more. Nothing fails outright."
+    cause: "A checkout-api release replaced the batched tax calculation with one tax-service lookup per line item. The latency of PlaceOrder then grew in step with the size of the basket."
+    triggers:
+      - "release 2025.41 of checkout-api"
+      - "release 2026.07 of checkout-api, which brought the per-item lookup back in a refactor"
+    resolution: "Rolled back the release and restored the batched tax call. Added a test that fails when PlaceOrder makes more than one tax lookup."
+    diagnose:
+      - "Compare the tax_lookups field in CHK-LAT-2210 lines with the number of line items: one lookup per item confirms the regression."
+      - "Check the deploy log for a checkout-api release in the last day."
+      - "Roll back to the previous release."
+
+  - id: F03
+    service: checkout-api
+    category: config_change
+    transparency: opaque
+    title: "Paid orders stuck in review"
+    signature: "CHK-ORD-3306 order held in PENDING_REVIEW for more than 120s reason=fraud_async"
+    generic_log: "checkout-api GET /v1/orders/88213 status=200 state=PENDING_REVIEW"
+    downstream: notify-worker
+    downstream_log: "NTF-8230 confirmation skipped: order not CONFIRMED"
+    alert: "checkout-api: orders pending review above 500"
+    symptoms: "New orders are accepted and paid but stay in PENDING_REVIEW and never reach CONFIRMED, so customers get no confirmation."
+    tickets:
+      - "Customers have paid but their order page still says 'being reviewed' after half an hour, and no confirmation email has arrived."
+      - "Orders are piling up in a review state. Payment was taken, but none of them has been confirmed since around midday."
+    cause: "The feature flag checkout.async_fraud_check was switched on in the production flag set. With the flag on, an order waits for a fraud-review callback that no service sends yet."
+    triggers:
+      - "a flag change that was meant for the staging flag set"
+      - "a bulk flag import that reset the flag to its default of on"
+    resolution: "Switched the flag off and replayed the held orders through the synchronous fraud check."
+    diagnose:
+      - "Read the current value of checkout.async_fraud_check in the production flag set."
+      - "Check the flag audit log for a change in the last day."
+      - "Switch the flag off, then run the replay job for orders in PENDING_REVIEW."
+
+  - id: F04
+    blip: true
+    service: payments-gateway
+    category: rate_limiting
+    transparency: opaque
+    title: "Card authorisations declined in bursts"
+    signature: "PGW-4012 authorisation declined by upstream code=R29 route=acq-primary"
+    generic_log: "payments-gateway POST /v1/authorise status=402 dur=180ms"
+    downstream: checkout-api
+    downstream_log: "CHK-PAY-1107 payment step failed status=402 upstream=payments-gateway"
+    alert: "payments-gateway: authorisation decline rate above 8%"
+    symptoms: "Card authorisations are declined in bursts while traffic is high, and the same card often succeeds on a retry a minute later."
+    tickets:
+      - "Lots of customers say their card was declined and then worked when they tried again a minute later. It is happening in waves."
+      - "Decline complaints are spiking during the promotion. Customers insist the cards are fine, and a second attempt usually goes through."
+    cause: "Meridian Acquiring limits our merchant account to 300 authorisations per second. It answers traffic above that limit with R29 declines, which the gateway logs as PGW-4012."
+    triggers:
+      - "a flash sale that pushed the peak to 420 authorisations per second"
+      - "a storm of payment retries after a card network had a short outage"
+    resolution: "Enabled the gateway's outbound limiter at 280 per second with queueing, and asked Meridian for a higher limit."
+    diagnose:
+      - "Compare authorisations per second on 'Gateway traffic' with the limit of 300 per second."
+      - "Confirm that the declines carry code R29 and not an issuer decline code."
+      - "Enable the outbound limiter so that excess requests queue instead of being declined."
+
+  - id: F05
+    service: payments-gateway
+    category: certificate_expiry
+    transparency: opaque
+    title: "Every card authorisation fails at once"
+    signature: "PGW-5120 handshake with acq-primary failed alert=45"
+    generic_log: "payments-gateway POST /v1/authorise status=502 dur=40ms"
+    downstream: checkout-api
+    downstream_log: "CHK-PAY-1107 payment step failed status=502 upstream=payments-gateway"
+    alert: "payments-gateway: authorisation success rate below 5%"
+    symptoms: "Every card authorisation fails within milliseconds and no request reaches the acquirer."
+    tickets:
+      - "No card payment has gone through since midnight. Every attempt fails straight away, for every card type."
+      - "Payments are completely down. It is not slow: it fails instantly, and it started exactly on the hour."
+    cause: "The client certificate that payments-gateway presents to Meridian Acquiring for mutual TLS passed its expiry date. Meridian rejected the handshake with alert 45, so no authorisation could be sent."
+    triggers:
+      - "the yearly certificate expiring at 00:00 UTC while the renewal ticket was still open"
+      - "a renewed certificate that had been issued but never deployed to the gateway"
+    resolution: "Deployed the renewed client certificate and restarted the gateway's outbound connectors. Added an alert 30 days before expiry."
+    diagnose:
+      - "Read the expiry date of the client certificate in the gateway's secret store."
+      - "Check that the failures began exactly at the certificate's notAfter time."
+      - "Deploy the renewed certificate and restart the outbound connectors."
+
+  - id: F06
+    service: payments-gateway
+    category: connection_pool_exhaustion
+    transparency: opaque
+    title: "Captures time out while authorisations stay fast"
+    signature: "PGW-3301 no backend slot for ledger write cl_waiting=180"
+    generic_log: "payments-gateway POST /v1/capture status=504 dur=10002ms"
+    downstream: checkout-api
+    downstream_log: "CHK-PAY-1107 payment step failed status=504 upstream=payments-gateway"
+    alert: "payments-gateway: capture latency p99 above 8s"
+    symptoms: "Captures time out after ten seconds while authorisations, which do not write to the ledger, stay fast."
+    tickets:
+      - "Authorisations look fine but taking the money fails: orders hang at the capture step for about ten seconds and then error."
+      - "Customers see 'payment could not be completed' after a long wait at the last step. The card check passes; it is the final charge that times out."
+    cause: "The ledger connection pooler gives payments-gateway 60 server connections. Transactions held open on the capture path used all 60, and new captures queued for a slot until they timed out."
+    triggers:
+      - "a capture retry job that opened a transaction for each retry and held it across the acquirer call"
+      - "a traffic peak while the pooler was still at its old limit of 60"
+    resolution: "Raised the pooler limit to 120 and moved the acquirer call outside the ledger transaction, so that a capture holds its connection only briefly."
+    diagnose:
+      - "Run SHOW POOLS on the ledger pooler: cl_waiting above zero with sv_active at 60 confirms exhaustion."
+      - "List the transactions from payments-gateway that have been open longest on ledger-db."
+      - "Stop the job that holds them, then raise the pool limit if traffic alone explains it."
+
+  - id: F07
+    service: ledger-service
+    category: lock_contention
+    transparency: opaque
+    title: "Ledger writes fail shortly after 02:00 UTC"
+    signature: "LDG-7741 statement cancelled after 5000ms wait rel=settlements pid=48213"
+    generic_log: "ledger-service POST /v1/entries status=500 dur=5008ms"
+    downstream: payments-gateway
+    downstream_log: "PGW-3390 ledger write failed status=500"
+    alert: "ledger-service: write error rate above 10%"
+    time: "02:04"
+    symptoms: "Ledger writes fail for ten to fifteen minutes shortly after 02:00 UTC and then recover without any action."
+    tickets:
+      - "Every night a little after two in the morning UTC, payments fail for about ten minutes and then come back by themselves."
+      - "We keep getting a short burst of failed captures in the small hours. It clears on its own within a quarter of an hour, and it was the same time yesterday."
+    cause: "The nightly settle-batch job takes an exclusive lock on the settlements table while it rewrites the day's rows. Ledger writes wait for that lock and are cancelled at the five-second lock timeout."
+    triggers:
+      - "month-end volume that stretched the job from two minutes to fourteen"
+      - "a backfill that put three days of rows into one run"
+    resolution: "Changed settle-batch to work in batches of 5,000 rows under row-level locks, so writers are no longer blocked."
+    diagnose:
+      - "Query pg_locks for an AccessExclusiveLock on settlements and note the pid that holds it."
+      - "Check whether settle-batch is running and for how long."
+      - "If writes must recover now, cancel the job's backend. The job is safe to rerun."
+
+  - id: F08
+    service: ledger-service
+    category: disk_full
+    transparency: transparent
+    title: "Ledger primary rejects all writes"
+    signature: "LDG-1090 could not write to pg_wal: No space left on device"
+    generic_log: "ledger-service POST /v1/entries status=503 dur=12ms"
+    downstream: payments-gateway
+    downstream_log: "PGW-3390 ledger write failed status=503"
+    alert: "ledger-db: primary rejecting writes"
+    symptoms: "The ledger primary refuses every write at once, while reads from the replicas continue to work."
+    tickets:
+      - "Nothing can be written to the ledger at all, although balances can still be read. It went from fine to completely broken within a minute."
+      - "All captures and refunds are failing. Reporting dashboards that only read data still load."
+    cause: "A replication slot for a decommissioned analytics replica was never dropped. The primary kept every WAL segment for that slot until the WAL volume was full."
+    triggers:
+      - "the analytics replica being switched off without its slot being dropped"
+      - "a logical replication slot left behind by a migration rehearsal"
+    resolution: "Dropped the inactive slot, which let the primary recycle WAL, and added an alert on slot lag in bytes."
+    diagnose:
+      - "Check the free space on the WAL volume of the primary."
+      - "Query pg_replication_slots for inactive slots with a large lag behind the current WAL position."
+      - "Drop the inactive slot after confirming that nothing consumes it."
+
+  - id: F09
+    service: ledger-service
+    category: memory_exhaustion
+    transparency: opaque
+    title: "ledger-service pods restart during statement exports"
+    signature: "LDG-2203 worker exited signal=9 rss=7.8G limit=8G task=statement-export"
+    generic_log: "ledger-service GET /v1/statements/export status=502 dur=41870ms"
+    downstream: edge-proxy
+    downstream_log: "EDG-9305 upstream ledger-service returned 502 route=/v1/statements"
+    alert: "ledger-service: pod restarts above 5 in 10 minutes"
+    symptoms: "ledger-service pods restart every few minutes, and requests in flight on a restarted pod fail."
+    tickets:
+      - "Merchant statement downloads fail after a long wait, and around the same moments unrelated ledger requests fail in small batches."
+      - "The finance team cannot export statements. Each attempt runs for most of a minute and dies, and other ledger calls hiccup when it does."
+    cause: "The statement export loads a merchant's full history into memory before it writes the file. For the largest merchants this exceeds the pod's 8 GB limit and the kernel kills the worker."
+    triggers:
+      - "a year-end export for the largest merchant"
+      - "a scheduled export that covered all time for a merchant with nine years of history"
+    resolution: "Changed the export to stream rows with a server-side cursor and capped the date range of one request."
+    diagnose:
+      - "Check the last termination reason of the restarted pods: OOMKilled confirms it."
+      - "Find the task named in LDG-2203 lines and who requested it."
+      - "Cancel the export and ask for a smaller date range."
+
+  - id: F10
+    service: catalog-search
+    category: memory_exhaustion
+    transparency: opaque
+    title: "Searches rejected on some nodes"
+    signature: "CAT-6610 request rejected: parent breaker at 96% of heap"
+    generic_log: "catalog-search GET /v1/search status=429 dur=6ms"
+    downstream: edge-proxy
+    downstream_log: "EDG-9305 upstream catalog-search returned 429 route=/v1/search"
+    alert: "catalog-search: search error rate above 20%"
+    symptoms: "Search requests are rejected within milliseconds on some nodes while other nodes answer normally."
+    tickets:
+      - "Search works one moment and returns an error the next. Refreshing the page sometimes fixes it."
+      - "About a third of product searches fail instantly. It looks random: the same search works on a second try."
+    cause: "A wildcard search on the description field loaded field data for the whole index into the heap of the data nodes. Heap use reached the parent circuit breaker, which rejects further requests to protect the node."
+    triggers:
+      - "a merchandising tool that sent queries with a leading wildcard"
+      - "a crawler that hit the search endpoint with wildcard terms"
+    resolution: "Blocked leading-wildcard queries at the API, cleared the field data cache and restarted the affected nodes one at a time."
+    diagnose:
+      - "Check heap use per node on 'Search cluster health': the nodes above 90% are the ones that reject."
+      - "Look in the slow log for wildcard queries on the description field."
+      - "Clear the field data cache, then block the source of the queries."
+
+  - id: F11
+    service: catalog-search
+    category: disk_full
+    transparency: opaque
+    title: "Product updates rejected, search results stale"
+    signature: "CAT-6120 write blocked: index read-only FORBIDDEN/12"
+    generic_log: "catalog-search PUT /v1/products/40117 status=403 dur=9ms"
+    downstream: inventory-sync
+    downstream_log: "INV-5480 catalog update rejected status=403"
+    alert: "catalog-search: indexing failures above 100 per minute"
+    symptoms: "Product updates are rejected, so the prices and stock shown in search go stale, while searching itself keeps working."
+    tickets:
+      - "Price changes made this morning are not showing on the site. Search still works, but it shows yesterday's prices."
+      - "New products added today cannot be found, and the stock levels in search results are out of date. Older products still come up."
+    cause: "The data nodes passed the flood-stage disk watermark of 95%. The search cluster then marked every index read-only, which rejects all writes."
+    triggers:
+      - "old daily indices that the retention job had stopped deleting"
+      - "a full reindex that doubled disk use while both copies existed"
+    resolution: "Deleted the indices that were no longer needed and cleared the read-only block. Added an alert at 85% disk use."
+    diagnose:
+      - "Check disk use on the data nodes against the flood-stage watermark of 95%."
+      - "List the indices by size and age to find what can be deleted."
+      - "Free space, then remove the read-only block from the indices."
+
+  - id: F12
+    service: catalog-search
+    category: config_change
+    transparency: opaque
+    title: "Common searches return nothing"
+    signature: "CAT-6405 analyzer reload failed set=synonyms_v41 line=2207"
+    generic_log: "catalog-search GET /v1/search status=200 hits=0 dur=11ms"
+    downstream: edge-proxy
+    downstream_log: "EDG-9320 search canary returned zero results route=/v1/search"
+    alert: "catalog-search: zero-result rate above 40%"
+    symptoms: "Searches answer quickly with zero results for common terms, and no error is shown to users."
+    tickets:
+      - "Searching for everyday things like 'kettle' or 'trainers' finds nothing. The page loads fine; it just says no products found."
+      - "Customers say the shop looks empty when they search. Browsing by category still shows products."
+    cause: "A new synonym set was published with a malformed rule. The analyzer failed to reload on the search nodes, and queries that pass through the synonym filter matched nothing."
+    triggers:
+      - "synonym set v41, which had an unclosed bracket on one line"
+      - "a synonym export from the merchandising tool that used the wrong delimiter"
+    resolution: "Reverted to the previous synonym set and reloaded the analyzers. Added validation to the synonym publish step."
+    diagnose:
+      - "Find CAT-6405 lines to see which synonym set failed and on which line."
+      - "Check the config history for a synonym publish in the last day."
+      - "Revert to the previous set and reload the analyzers."
+
+  - id: F13
+    service: notify-worker
+    category: queue_consumer_stall
+    transparency: opaque
+    title: "Transactional emails stop while workers look healthy"
+    signature: "NTF-8102 message returned to queue redelivery=57 queue=email-tx"
+    generic_log: "notify-worker queue=email-tx depth=48210 oldest=2710s"
+    downstream: checkout-api
+    downstream_log: "CHK-NTF-1410 order confirmation not acknowledged after 900s"
+    alert: "notify-worker: email-tx queue depth above 20000"
+    symptoms: "Transactional emails stop going out and the email queue grows, while the workers stay up and report healthy."
+    tickets:
+      - "Order confirmation and password reset emails stopped arriving about forty minutes ago. Nothing else seems broken."
+      - "Customers are not getting any emails from us. The backlog number on the dashboard keeps climbing."
+    cause: "One message referred to an attachment that no longer existed, which made the worker throw before it acknowledged the message. The broker redelivered that message to every worker in turn, and the queue stalled behind it."
+    triggers:
+      - "a receipt whose PDF had been removed by a storage clean-up before the email was sent"
+      - "a message that pointed at an attachment in a bucket that had been emptied"
+    resolution: "Moved the message to the dead-letter queue by hand and set a redelivery limit of five, so the broker does it automatically."
+    diagnose:
+      - "Look for NTF-8102 lines with a high redelivery count: they name the stuck message."
+      - "Check on 'Notification queues' that the workers consume but do not acknowledge."
+      - "Move the stuck message to the dead-letter queue."
+
+  - id: F14
+    blip: true
+    service: notify-worker
+    category: rate_limiting
+    transparency: transparent
+    title: "Text messages delayed or never sent"
+    signature: "NTF-8450 provider answered 429 bucket=sms-tx retry_after=60"
+    generic_log: "notify-worker channel=sms sent=0 deferred=1840"
+    downstream: auth-service
+    downstream_log: "AUTH-2410 one-time code not delivered within 60s"
+    alert: "notify-worker: SMS delivery rate below 50%"
+    symptoms: "Text messages are delayed by many minutes or never sent, while emails go out normally."
+    tickets:
+      - "Customers are not receiving their login codes by text, or the code arrives ten minutes late when it has already expired. Emails are fine."
+      - "Delivery texts and one-time codes are badly delayed today."
+    cause: "Tessel SMS caps our account at 50 messages per second. A bulk send went out through the transactional sender and used the whole allowance, so one-time codes were throttled with 429 responses."
+    triggers:
+      - "a marketing campaign of 200,000 texts sent through the transactional sender"
+      - "a loop that resent delivery texts for a whole afternoon"
+    resolution: "Paused the bulk send, moved bulk messages to their own sender with a separate cap and gave one-time codes priority in the queue."
+    diagnose:
+      - "Compare the SMS send rate with the cap of 50 per second on the provider dashboard."
+      - "Check what is queued on sms-tx: bulk texts there are the cause."
+      - "Pause the bulk send and let the transactional backlog drain."
+
+  - id: F15
+    service: notify-worker
+    category: dns_failure
+    transparency: transparent
+    title: "Every email send fails immediately"
+    signature: "NTF-8011 lookup smtp-relay.larkhill.internal failed: SERVFAIL"
+    generic_log: "notify-worker channel=email sent=0 failed=912"
+    downstream: checkout-api
+    downstream_log: "CHK-NTF-1410 order confirmation not acknowledged after 900s"
+    alert: "notify-worker: email send failures above 90%"
+    symptoms: "Every email send fails immediately and the workers log an error for each one, while text messages keep flowing."
+    tickets:
+      - "No emails are going out at all, and the workers log an error on every attempt. Texts still work."
+      - "Email sending is failing outright for every message. It is not a backlog: each send errors straight away."
+    cause: "The internal resolvers for the notify network could not answer for the larkhill.internal zone. notify-worker could not resolve the name of the SMTP relay, so it never opened a connection."
+    triggers:
+      - "both resolvers being patched in the same maintenance window"
+      - "a resolver that lost its forwarder after a restart"
+    resolution: "Restored one resolver, staggered resolver maintenance and added a cached fallback address for the relay."
+    diagnose:
+      - "Resolve smtp-relay.larkhill.internal from a notify-worker pod."
+      - "Check the health of both internal resolvers."
+      - "Restore a resolver or fail over to the secondary pair."
+
+  - id: F16
+    service: auth-service
+    category: certificate_expiry
+    transparency: opaque
+    title: "Signed-in users are logged out everywhere"
+    signature: "AUTH-2291 token rejected: kid=2025-q3 not in keyset"
+    generic_log: "auth-service POST /v1/token/verify status=401 dur=3ms"
+    downstream: checkout-api
+    downstream_log: "CHK-AUTH-1203 session token rejected status=401"
+    alert: "auth-service: token verification failures above 30%"
+    symptoms: "Signed-in users are logged out and fresh logins are rejected by other services, although auth-service itself reports healthy."
+    tickets:
+      - "Everyone is being logged out. People sign in successfully and are thrown back to the login page as soon as they open their account."
+      - "Customers cannot stay signed in. The login form accepts the password, and then the next page says the session is invalid."
+    cause: "The signing key that auth-service used for tokens passed its expiry date and was removed from the published keyset. The service kept signing with it because the rotation job had not run, so other services rejected every token."
+    triggers:
+      - "the quarterly rotation job having been disabled during a migration"
+      - "the rotation job failing on a permissions error for two weeks"
+    resolution: "Ran the key rotation by hand so that tokens were signed with a current key. Added an alert when the active key is within seven days of expiry."
+    diagnose:
+      - "Compare the kid in AUTH-2291 lines with the keys in the published keyset."
+      - "Check when the key rotation job last succeeded."
+      - "Run the rotation by hand and confirm that new tokens verify."
+
+  - id: F17
+    blip: true
+    service: auth-service
+    category: code_regression
+    transparency: opaque
+    title: "Login loops on Safari"
+    signature: "AUTH-2317 callback without session cookie agent=Safari"
+    generic_log: "auth-service GET /v1/login/callback status=302 location=/login"
+    downstream: edge-proxy
+    downstream_log: "EDG-9330 redirect loop detected host=shop path=/login"
+    alert: "auth-service: login completion rate below 70%"
+    symptoms: "Logins loop back to the login page for users on Safari, while other browsers sign in normally."
+    tickets:
+      - "iPhone users cannot log in. They enter their details, the page reloads and asks them to log in again. Android users are fine."
+      - "We have a wave of complaints from people on Macs and iPhones who are stuck on the sign-in page. Colleagues on Chrome cannot reproduce it."
+    cause: "An auth-service release changed the session cookie to SameSite=None without the Secure attribute. Safari drops such cookies, so the login callback arrived without a session and redirected back to the login page."
+    triggers:
+      - "release 2025.38 of auth-service, which upgraded the web framework and with it the cookie defaults"
+      - "release 2026.03 of auth-service, which lost the explicit cookie attributes in a merge"
+    resolution: "Rolled back the release and set the cookie attributes explicitly, with a browser test that covers Safari."
+    diagnose:
+      - "Group AUTH-2317 lines by agent: Safari alone confirms the cookie problem."
+      - "Check the deploy log for an auth-service release in the last day."
+      - "Roll back the release."
+
+  - id: F18
+    service: auth-service
+    category: connection_pool_exhaustion
+    transparency: transparent
+    title: "Logins time out, existing sessions keep working"
+    signature: "AUTH-2105 user-db pool exhausted: 30 of 30 in use, 96 waiting"
+    generic_log: "auth-service POST /v1/login status=503 dur=5003ms"
+    downstream: edge-proxy
+    downstream_log: "EDG-9305 upstream auth-service returned 503 route=/v1/login"
+    alert: "auth-service: login latency p99 above 5s"
+    symptoms: "Logins and sign-ups time out after five seconds, while the verification of existing tokens stays fast."
+    tickets:
+      - "People who are already signed in can browse and buy, but nobody new can log in or register. The form waits five seconds and fails."
+      - "Login is timing out for everyone. Existing sessions keep working."
+    cause: "auth-service rehashes a password at login when the stored hash uses the old algorithm, and it holds a user-db connection for the whole rehash. With 30 connections in the pool, a peak of logins by users with old hashes used them all, and further logins waited until they timed out."
+    triggers:
+      - "the Monday morning login peak"
+      - "an email campaign that sent many dormant users to log in at once"
+    resolution: "Moved the rehash to a background queue so that a login holds its connection for milliseconds, and raised the pool to 60."
+    diagnose:
+      - "Check the user-db pool gauge on 'Login funnel' for 30 of 30 in use."
+      - "Look for connections held for seconds by the login handler."
+      - "Switch off the in-request rehash to release connections."
+
+  - id: F19
+    service: inventory-sync
+    category: queue_consumer_stall
+    transparency: opaque
+    title: "Stock levels hours behind the warehouses"
+    signature: "INV-5530 consumer lag=184000 partition=7 group=stock-apply"
+    generic_log: "inventory-sync stream=stock-events applied=120/s received=2400/s"
+    downstream: catalog-search
+    downstream_log: "CAT-6720 stock field older than 3600s for 18% of products"
+    alert: "inventory-sync: stock-apply lag above 100000"
+    symptoms: "Stock levels on the site fall hours behind the warehouses, so items show as available after they have sold out."
+    tickets:
+      - "Customers are ordering things that the warehouse says sold out hours ago. The stock numbers on the site are badly behind."
+      - "We are overselling. The warehouse counts are right, but the website only catches up many hours later."
+    cause: "Stock events are partitioned by warehouse, and one warehouse produced far more events than the rest. Its partition has a single consumer, which could not keep up, so that warehouse's stock updates queued for hours."
+    triggers:
+      - "a full stock recount at the largest warehouse"
+      - "a warehouse system that resent two days of events"
+    resolution: "Repartitioned stock events by product so that load spreads evenly, and added consumers to the group."
+    diagnose:
+      - "Check the lag per partition for the stock-apply group: one partition far ahead of the rest confirms a hot partition."
+      - "Identify which warehouse maps to that partition and what it is sending."
+      - "Add a temporary consumer for the hot partition or pause the resend."
+
+  - id: F20
+    blip: true
+    service: inventory-sync
+    category: lock_contention
+    transparency: transparent
+    title: "Stock reservations fail during the afternoon import"
+    signature: "INV-5207 deadlock detected: reserve_stock chosen as victim"
+    generic_log: "inventory-sync POST /v1/reservations status=409 dur=1012ms"
+    downstream: checkout-api
+    downstream_log: "CHK-INV-1305 stock reservation failed status=409"
+    alert: "inventory-sync: reservation failures above 5%"
+    time: "14:20"
+    symptoms: "Stock reservations fail now and then during the afternoon bulk import and succeed when retried."
+    tickets:
+      - "Some customers get 'could not reserve your items' at checkout in the afternoon. Trying again a few seconds later works."
+      - "Checkout fails now and then at the stock step, mostly between two and three in the afternoon."
+    cause: "The bulk stock import updates rows in file order while reservations lock rows in basket order. When both touch the same two products in opposite order, the database detects a deadlock and aborts the reservation."
+    triggers:
+      - "the daily supplier import overlapping the afternoon sales peak"
+      - "an import file three times its usual size"
+    resolution: "Made the import sort its rows by product id, the order that reservations use, and made a reservation retry once after a deadlock."
+    diagnose:
+      - "Count INV-5207 lines and check that they fall inside the import window."
+      - "Confirm in the database log that the other transaction in each deadlock is the bulk import."
+      - "Pause the import until the peak has passed."
+
+  - id: F21
+    service: inventory-sync
+    category: config_change
+    transparency: opaque
+    title: "Thousands of products drop to zero stock"
+    signature: "INV-5611 unmapped location code count=4312 feed=warehouse-north"
+    generic_log: "inventory-sync feed=warehouse-north applied=0 skipped=4312"
+    downstream: catalog-search
+    downstream_log: "CAT-6731 products with zero stock rose by 4312 in 5m"
+    alert: "inventory-sync: skipped feed rows above 1000"
+    symptoms: "Thousands of products from one warehouse drop to zero stock at once, while the warehouse reports normal levels."
+    tickets:
+      - "A large share of the catalogue suddenly shows as out of stock, and all of it ships from the northern warehouse."
+      - "Thousands of products went to 'unavailable' within a few minutes. The warehouse says nothing changed on their side."
+    cause: "The location mapping table, which translates warehouse location codes into site regions, was edited, and the rows for the northern warehouse were replaced with a new code format. Feed rows with the old codes no longer matched and were skipped, which the site reads as zero stock."
+    triggers:
+      - "a mapping update prepared for a warehouse system upgrade that had not gone live"
+      - "a spreadsheet import that overwrote the mapping table"
+    resolution: "Restored the previous mapping rows from the config history and ran the feed again."
+    diagnose:
+      - "Check INV-5611 lines for the feed name and the count of unmapped codes."
+      - "Compare the location mapping table with its previous version in the config history."
+      - "Restore the previous mapping and run the feed again."
+
+  - id: F22
+    service: edge-proxy
+    category: certificate_expiry
+    transparency: opaque
+    title: "Browsers show a security warning for the shop"
+    signature: "EDG-9001 tls handshake aborted sni=shop.larkhill.example alert=45"
+    generic_log: "edge-proxy listener=443 handshakes_ok=0 handshakes_failed=5120"
+    downstream: uptime-probe
+    downstream_log: "PRB-0102 synthetic checkout failed step=connect"
+    alert: "edge-proxy: successful TLS handshakes at zero"
+    symptoms: "Browsers show a security warning for the shop and the apps fail to connect, while internal health checks over plain HTTP still pass."
+    tickets:
+      - "Customers see a 'your connection is not private' warning when they open the shop. The mobile app just says it cannot connect."
+      - "The site has been showing a browser security error to everyone since nine this morning."
+    cause: "The public certificate for shop.larkhill.example passed its expiry date. The renewal client had stopped running, and nothing alerted on the approaching expiry."
+    triggers:
+      - "the renewal timer not having been enabled again after a host migration"
+      - "the renewal client crashing at start-up since an operating system upgrade"
+    resolution: "Issued a new certificate, reloaded the proxies and repaired the renewal client. Added an alert when a certificate has under 14 days left."
+    diagnose:
+      - "Read the notAfter date of the certificate served on port 443."
+      - "Check when the renewal client last ran successfully."
+      - "Issue a new certificate and reload the edge proxies."
+
+  - id: F23
+    service: edge-proxy
+    category: dns_failure
+    transparency: transparent
+    title: "Checkout routes return 502 instantly"
+    signature: "EDG-9140 upstream resolve failed host=checkout.larkhill.internal NXDOMAIN"
+    generic_log: "edge-proxy route=/v1/orders status=502 upstream=- dur=2ms"
+    downstream: uptime-probe
+    downstream_log: "PRB-0102 synthetic checkout failed step=place-order status=502"
+    alert: "edge-proxy: 502 rate above 50% on checkout routes"
+    symptoms: "All checkout routes return 502 within milliseconds, although the checkout pods are healthy and reachable by address."
+    tickets:
+      - "Checkout pages fail instantly with a bad gateway error. The checkout team says their service is up and healthy."
+      - "The shop loads and search works, but every attempt to open the basket or pay gives an error page straight away."
+    cause: "The internal DNS record for checkout.larkhill.internal was deleted when its service entry was recreated under a new name. edge-proxy could not resolve its upstream, so it had nowhere to send checkout requests."
+    triggers:
+      - "a service rename that removed the old record before the proxy was pointed at the new one"
+      - "an infrastructure clean-up that deleted records it judged unused"
+    resolution: "Recreated the record as an alias of the new name and updated the proxy's upstream. Added a check that a record is unreferenced before it is deleted."
+    diagnose:
+      - "Resolve checkout.larkhill.internal from an edge-proxy host."
+      - "Check the DNS change log for a deletion in the internal zone."
+      - "Recreate the record or point the upstream at the new name."
+
+  - id: F24
+    blip: true
+    service: edge-proxy
+    category: code_regression
+    transparency: opaque
+    title: "Signed-in users get an error on every page"
+    signature: "EDG-9212 request rejected status=431 header_bytes=9120 limit=8192"
+    generic_log: "edge-proxy route=/ status=431 dur=1ms"
+    downstream: uptime-probe
+    downstream_log: "PRB-0110 synthetic login failed step=load-account status=431"
+    alert: "edge-proxy: 431 responses above 1%"
+    symptoms: "Some signed-in users get an error page on every request, while signed-out visitors browse normally."
+    tickets:
+      - "Long-standing customers say every page gives an error once they are logged in. If they clear their cookies it works for a while."
+      - "A subset of logged-in users cannot load any page. New visitors and people in private windows are fine."
+    cause: "An edge-proxy release lowered the maximum size of request headers from 16 KB to 8 KB, the default of the upgraded proxy library. Users with many cookies sent larger headers and were rejected with 431."
+    triggers:
+      - "release 2025.44 of edge-proxy, which upgraded the proxy library"
+      - "release 2026.05 of edge-proxy, which rebuilt the proxy on the new library version"
+    resolution: "Rolled back the release and set the header limit explicitly to 16 KB, with a test that sends a 12 KB header."
+    diagnose:
+      - "Compare header_bytes with limit in EDG-9212 lines: requests just above 8192 confirm the lowered limit."
+      - "Check the deploy log for an edge-proxy release in the last day."
+      - "Roll back the release."
+
+# Faults the corpus knows nothing about. Two of them are on services that have no document
+# at all (media-store, fraud-scorer). The other four are on known services but match none of
+# that service's known faults.
+novel:
+  - id: N01
+    service: media-store
+    signature: "MED-3310 multipart assembly failed part=17 upload=u-66172"
+    generic_log: "media-store PUT /v1/uploads/u-66172 status=500 dur=8420ms"
+    alert: "media-store: upload failure rate above 30%"
+    tickets:
+      - "Sellers cannot upload product photos. Large images fail near the end of the upload, and small ones go through."
+
+  - id: N02
+    service: checkout-api
+    signature: "CHK-IDM-7719 request rejected: timestamp outside accepted window skew=312s"
+    generic_log: "checkout-api POST /v1/orders status=400 dur=4ms client=ios-app"
+    alert: "checkout-api: 400 rate above 3% on /v1/orders"
+    tickets:
+      - "Some orders from the mobile app are refused with a 'request expired' message, even though the customer has only just pressed the button."
+
+  - id: N03
+    service: payments-gateway
+    signature: "PGW-6644 settlement file rejected by acquirer: unknown record type 07"
+    generic_log: "payments-gateway job=settlement-upload status=rejected dur=2110ms"
+    alert: "payments-gateway: settlement file not acknowledged"
+    tickets:
+      - "Yesterday's settlement did not arrive in the bank account. Card payments themselves are working."
+
+  - id: N04
+    service: catalog-search
+    signature: "CAT-6999 shard 3 relocation restarted attempt=41"
+    generic_log: "catalog-search GET /v1/search status=200 hits=312 dur=1840ms"
+    alert: "catalog-search: cluster state yellow for more than 60 minutes"
+    tickets:
+      - "Search is slower than normal and the cluster has shown a warning state for over an hour. The results look right."
+
+  - id: N05
+    service: fraud-scorer
+    signature: "FRD-1205 scoring deadline exceeded model=risk-v9 dur=2000ms"
+    generic_log: "fraud-scorer POST /v1/score status=504 dur=2001ms"
+    alert: "fraud-scorer: timeout rate above 15%"
+    tickets:
+      - "Risk scores are coming back empty for many orders, and the fraud team is scoring them by hand."
+
+  - id: N06
+    service: auth-service
+    signature: "AUTH-2950 push challenge not sent: provider connection reset"
+    generic_log: "auth-service POST /v1/mfa/push status=502 dur=1210ms"
+    alert: "auth-service: push challenge failures above 25%"
+    tickets:
+      - "Staff cannot approve logins on their phones because the approval prompt never arrives. Customer logins with a password work."
+
+# Lines that carry no information about any fault. The generator mixes them into log excerpts.
+noise:
+  - "healthcheck ok"
+  - "config reload: no changes"
+  - "gc pause 41ms"
+  - "metrics flush job finished rows=1280"
+  - "cache hit ratio=0.93"
+  - "connection keepalive sent peers=12"
+  - "scheduled task heartbeat ok"
+  - "request log rotated"

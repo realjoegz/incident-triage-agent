@@ -1,0 +1,15 @@
+# A local stack for development. The credentials below are for this stack only.
+services:
+  db:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_USER: triage
+      POSTGRES_PASSWORD: triage
+      POSTGRES_DB: triage
+    ports:
+      - "127.0.0.1:54329:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready --username triage --dbname triage"]
+      interval: 2s
+      timeout: 2s
+      retries: 30

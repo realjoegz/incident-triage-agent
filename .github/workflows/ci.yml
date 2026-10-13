@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Where fastembed keeps the embedding model, so that the cache step below can save it.
+  TRIAGE_EMBEDDING_CACHE_DIR: /home/runner/.cache/fastembed
+
+# Every action is named by the commit of the release in the comment next to it. A tag of an
+# action can be moved by its owner, and a commit cannot. No job reads a secret: nothing here
+# calls a model API.
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      db:
+        image: pgvector/pgvector:pg18
+        env:
+          POSTGRES_USER: triage
+          POSTGRES_PASSWORD: triage
+          POSTGRES_DB: triage
+        ports:
+          - 54329:5432
+        options: >-
+          --health-cmd "pg_isready --username triage --dbname triage"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /home/runner/.cache/fastembed
+          key: fastembed-bge-small-en-v1.5
+
+      # The lock file is read and not rewritten, so a dependency that it does not pin fails.
+      - run: uv sync --locked
+
+      - run: uv run ruff check .
+
+      - run: uv run ruff format --check .
+
+      - run: uv run mypy
+
+      - run: uv run triage data check
+
+      - run: uv run pytest
