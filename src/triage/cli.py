@@ -3,16 +3,26 @@
 import argparse
 import asyncio
 import json
+import os
 import sys
 from collections.abc import Sequence
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
+import anthropic
 import uvicorn
 
 from triage import db
 from triage.api import create_app
 from triage.dataset import checks, load_corpus, load_labelled
+from triage.dataset.catalogue import load_catalogue
 from triage.dataset.generate import write_files
 from triage.embeddings import SNAPSHOT_FILE, LocalEmbedder, Snapshot
+from triage.evaluation import gate, judge, report, runner
+from triage.evaluation.rows import Row
+from triage.evaluation.variants import BY_NAME, VARIANTS
+from triage.llm.recording import Budget, BudgetExceeded
 from triage.mcp_server import serve_stdio
 from triage.retrieval import incident_query
 from triage.runtime import build_embedder, open_retriever
@@ -87,6 +97,151 @@ def _mcp(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+# ----------------------------------------------------------------------------------------------
+# Evaluation
+
+
+def _results_dir(settings: Settings) -> Path:
+    return settings.eval_dir / gate.RESULTS_DIR
+
+
+def _committed_summary(settings: Settings) -> dict[str, Any]:
+    path = _results_dir(settings) / runner.SUMMARY_FILE
+    return dict(json.loads(path.read_text(encoding="utf-8")))
+
+
+def _eval_retrieval(settings: Settings, args: argparse.Namespace) -> int:
+    print(json.dumps(asyncio.run(gate.measure_retrieval(settings)), indent=2))
+    return 0
+
+
+def _eval_run(settings: Settings, args: argparse.Namespace) -> int:
+    """A run against the API. It pays only for calls that have no recording yet."""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        print("ANTHROPIC_API_KEY is not set; `triage eval replay` needs no key", file=sys.stderr)
+        return 2
+    labelled = load_labelled(settings.data_dir)
+    cases = runner.sample_cases(labelled, args.cases) if args.cases else None
+    variants = VARIANTS
+    if args.variants:
+        variants = tuple(BY_NAME[name] for name in args.variants.split(","))
+    partial = cases is not None or args.reps != runner.REPETITIONS or variants != VARIANTS
+    if partial and args.out is None:
+        print("a partial run needs --out, so that it cannot replace the results", file=sys.stderr)
+        return 2
+    budget = Budget(max_usd=args.max_usd)
+    try:
+        evaluation = asyncio.run(
+            runner.evaluate(
+                settings,
+                live=True,
+                variants=variants,
+                cases=cases,
+                reps=args.reps,
+                budget=budget,
+                judge=args.judge,
+                control_count=args.controls,
+            )
+        )
+    except BudgetExceeded as error:
+        print(f"stopped: {error}. What was answered is recorded and will not be paid for again.")
+        return 3
+    run_info = {
+        "finished": datetime.now(UTC).isoformat(timespec="seconds"),
+        "paid_usd": round(budget.spent_usd, 4),
+        "paid_calls": budget.paid_calls,
+        "judge": args.judge,
+        "anthropic_sdk": anthropic.__version__,
+        **evaluation.timings,
+    }
+    out = args.out or _results_dir(settings)
+    runner.write(evaluation, out, run_info)
+    print(report.results_table(evaluation.summary))
+    print(f"paid ${budget.spent_usd:.4f} for {budget.paid_calls} calls; results in {out}/")
+    if evaluation.errors:
+        print(f"{len(evaluation.errors)} attempts gave no answer; see {out}/{runner.ERRORS_FILE}")
+        return 1
+    return 0
+
+
+def _eval_estimate(settings: Settings, args: argparse.Namespace) -> int:
+    """Projects the cost of the full run from the rows of a sample run."""
+    with (args.sample / runner.ROWS_FILE).open(encoding="utf-8") as lines:
+        rows = [Row.model_validate_json(line) for line in lines if line.strip()]
+    incidents = len(load_labelled(settings.data_dir))
+    planned = incidents * runner.REPETITIONS
+    agents = 0.0
+    judged_answers = 0.0
+    print(f"per variant, for {incidents} incidents x {runner.REPETITIONS} repetitions:")
+    for variant in VARIANTS:
+        of_variant = [row for row in rows if row.variant == variant.name]
+        if not of_variant:
+            print(f"  {variant.name}: not in the sample")
+            continue
+        per_row = sum(row.cost_usd for row in of_variant) / len(of_variant)
+        judged = sum(1 for row in of_variant if row.judge is not None) / len(of_variant)
+        agents += per_row * planned
+        judged_answers += judged * planned
+        print(
+            f"  {variant.name}: ${per_row:.5f} per incident over {len(of_variant)} sampled, "
+            f"${per_row * planned:.2f} in all"
+        )
+    verdicts = [row for row in rows if row.judge is not None]
+    per_verdict = sum(row.judge_cost_usd for row in verdicts) / len(verdicts) if verdicts else 0.0
+    controls = len(
+        judge.controls(load_catalogue(settings.data_dir), load_corpus(settings.data_dir))
+    )
+    judge_direct = per_verdict * (judged_answers + controls)
+    print(
+        f"judge: ${per_verdict:.5f} per verdict over {len(verdicts)} sampled, about "
+        f"{judged_answers:.0f} answers and {controls} controls: ${judge_direct:.2f} direct, "
+        f"${judge_direct / 2:.2f} through the Batch API"
+    )
+    print(f"estimate for one full run: ${agents + judge_direct / 2:.2f} with the judge in a batch")
+    return 0
+
+
+def _eval_replay(settings: Settings, args: argparse.Namespace) -> int:
+    try:
+        evaluation = asyncio.run(runner.evaluate(settings, live=False, log=lambda _: None))
+    except runner.StaleResults as error:
+        print(f"stale: {error}", file=sys.stderr)
+        return 1
+    if args.out:
+        runner.write(evaluation, args.out, None)
+    print(report.results_table(evaluation.summary))
+    return 0
+
+
+def _eval_baseline(settings: Settings, args: argparse.Namespace) -> int:
+    path = settings.eval_dir / gate.BASELINE_FILE
+    baseline = gate.make_baseline(_committed_summary(settings))
+    path.write_text(json.dumps(baseline, indent=2) + "\n", encoding="utf-8")
+    print(f"wrote {path} from {_results_dir(settings)}/{runner.SUMMARY_FILE}")
+    return 0
+
+
+def _eval_gate(settings: Settings, args: argparse.Namespace) -> int:
+    findings = asyncio.run(gate.run(settings, args.readme))
+    for finding in findings:
+        print(finding)
+    failed = [finding for finding in findings if not finding.ok]
+    print(f"{len(findings) - len(failed)} checks passed, {len(failed)} failed")
+    return 1 if failed else 0
+
+
+def _eval_report(settings: Settings, args: argparse.Namespace) -> int:
+    summary = _committed_summary(settings)
+    if args.update:
+        args.update.write_text(
+            report.with_table(args.update.read_text(encoding="utf-8"), summary), encoding="utf-8"
+        )
+        print(f"updated the table in {args.update}")
+        return 0
+    print(report.detail_table(summary) if args.detail else report.results_table(summary))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="triage", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -123,6 +278,38 @@ def build_parser() -> argparse.ArgumentParser:
     serve.set_defaults(run=_serve)
 
     commands.add_parser("mcp", help="serve the evidence tools over stdio").set_defaults(run=_mcp)
+
+    evaluation = commands.add_parser("eval", help="the evaluation").add_subparsers(
+        dest="eval_command", required=True
+    )
+    evaluation.add_parser("retrieval", help="measure retrieval alone").set_defaults(
+        run=_eval_retrieval
+    )
+    run = evaluation.add_parser("run", help="run against the API; pays for unrecorded calls")
+    run.add_argument("--max-usd", type=float, required=True, help="stop paying at this amount")
+    run.add_argument("--cases", type=int, help="only this many incidents, as a sample")
+    run.add_argument("--reps", type=int, default=runner.REPETITIONS)
+    run.add_argument("--variants", help="comma-separated names; all by default")
+    run.add_argument("--judge", choices=["batch", "direct", "none"], default="batch")
+    run.add_argument("--controls", type=int, help="only this many judge controls")
+    run.add_argument("--out", type=Path, help="where to write; required for a partial run")
+    run.set_defaults(run=_eval_run)
+    estimate = evaluation.add_parser("estimate", help="project the cost of a full run")
+    estimate.add_argument("sample", type=Path, help="the --out directory of a sample run")
+    estimate.set_defaults(run=_eval_estimate)
+    replay = evaluation.add_parser("replay", help="rebuild the results from the recordings")
+    replay.add_argument("--out", type=Path, help="write the rebuilt results here")
+    replay.set_defaults(run=_eval_replay)
+    evaluation.add_parser(
+        "baseline", help="accept the committed results as the new baseline"
+    ).set_defaults(run=_eval_baseline)
+    check = evaluation.add_parser("gate", help="what CI runs: fail if anything got worse")
+    check.add_argument("--readme", type=Path, help="also check the results table of this file")
+    check.set_defaults(run=_eval_gate)
+    table = evaluation.add_parser("report", help="print the results table")
+    table.add_argument("--detail", action="store_true", help="the longer table of the docs")
+    table.add_argument("--update", type=Path, help="write the table into this file's markers")
+    table.set_defaults(run=_eval_report)
 
     return parser
 

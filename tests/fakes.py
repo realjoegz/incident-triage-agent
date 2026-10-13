@@ -1,9 +1,19 @@
 """Test doubles for the model and for the search."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
+from triage.agent.prompts import incident_block
+from triage.dataset.catalogue import Catalogue
+from triage.evaluation.rows import Verdict
 from triage.llm.base import LLMRequest, LLMResponse, Usage
-from triage.models import Citation, Evidence, SearchMode, TriageDraft
+from triage.models import (
+    Citation,
+    Evidence,
+    Label,
+    LabelledIncident,
+    SearchMode,
+    TriageDraft,
+)
 from triage.taxonomy import Category
 
 DOC_A = Evidence(
@@ -94,3 +104,74 @@ class FixedSearch:
     async def __call__(self, query: str, mode: SearchMode, limit: int) -> list[Evidence]:
         self.calls.append((query, mode, limit))
         return self._evidence[:limit]
+
+
+# ----------------------------------------------------------------------------------------------
+# Stand-ins for the model in tests of the evaluation: each answers every request by a rule.
+
+
+class RuleLLM:
+    """Answers triage requests with `triage(label, prompt)` and judge requests by construction.
+
+    The judge rule is the one the controls are built on: a passage supports a stated cause when
+    it is the first sentence of that same cause in the catalogue.
+    """
+
+    def __init__(
+        self,
+        labelled: Sequence[LabelledIncident],
+        catalogue: Catalogue,
+        triage: Callable[[Label, str], TriageDraft],
+    ) -> None:
+        self._labels = {incident_block(item.incident): item.label for item in labelled}
+        self._causes = [fault.cause for fault in catalogue.faults]
+        self._triage = triage
+        self.requests: list[LLMRequest] = []
+
+    async def complete(self, request: LLMRequest) -> LLMResponse:
+        self.requests.append(request)
+        if request.schema is Verdict:
+            stated, passages = request.user.split("<cited_passages>")
+            supported = any(
+                cause in stated and cause.split(". ")[0] + "." in passages for cause in self._causes
+            )
+            text = Verdict(reason="by construction", supported=supported).model_dump_json()
+        else:
+            block = request.user.split("\n\n<evidence>")[0].split("\n\n<previous_answer>")[0]
+            text = self._triage(self._labels[block], request.user).model_dump_json()
+        return LLMResponse(
+            text=text,
+            stop_reason="end_turn",
+            model=request.model,
+            usage=Usage(input_tokens=2000, output_tokens=500),
+            latency_s=1.0,
+            attempts=1,
+        )
+
+
+def oracle(catalogue: Catalogue) -> Callable[[Label, str], TriageDraft]:
+    """Knows the answer key. Names the labelled cause whenever it can cite a document for it."""
+    faults = {fault.id: fault for fault in catalogue.faults}
+
+    def answer(label: Label, prompt: str) -> TriageDraft:
+        if not label.answerable:
+            return abstention()
+        fault = faults[label.fault_id]
+        if "<evidence>" not in prompt:
+            return draft(category=label.category, likely_cause=fault.cause)
+        shown = [doc_id for doc_id in label.doc_ids if f'<document id="{doc_id}"' in prompt]
+        if not shown:
+            return abstention()
+        quote = fault.cause.split(". ")[0] + "."
+        return draft((shown[0], quote), category=label.category, likely_cause=fault.cause)
+
+    return answer
+
+
+def always_abstains(label: Label, prompt: str) -> TriageDraft:
+    return abstention()
+
+
+def always_rate_limiting(label: Label, prompt: str) -> TriageDraft:
+    """Names one cause for everything and cites words that no document contains."""
+    return draft(("INC-2025-0173", "the acquirer confirmed that it throttled every request"))

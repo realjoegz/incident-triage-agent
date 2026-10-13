@@ -17,6 +17,7 @@ just before it.
 import asyncio
 import random
 import time
+from typing import Any
 
 import anthropic
 
@@ -26,6 +27,28 @@ MAX_ATTEMPTS = 6
 REQUEST_TIMEOUT_S = 120.0
 BASE_DELAY_S = 1.0
 MAX_DELAY_S = 30.0
+
+
+def message_params(request: LLMRequest) -> dict[str, Any]:
+    """The body of a Messages API call for a request. The Batch API takes the same body.
+
+    The output schema goes in `output_config.format` and the caller validates the text itself,
+    so that an answer cut off at max_tokens or declined comes back as a response with its stop
+    reason instead of as a parsing exception.
+    """
+    return {
+        "model": request.model,
+        "max_tokens": request.max_tokens,
+        "system": request.system,
+        "messages": [{"role": "user", "content": request.user}],
+        "output_config": {
+            "effort": request.effort,
+            "format": {
+                "type": "json_schema",
+                "schema": anthropic.transform_schema(request.schema),
+            },
+        },
+    }
 
 
 class ClaudeLLM:
@@ -38,22 +61,7 @@ class ClaudeLLM:
         for attempt in range(1, MAX_ATTEMPTS + 1):
             started = time.perf_counter()
             try:
-                # `create` and not the SDK's `parse` helper: the caller validates the text
-                # itself, so that an answer cut off at max_tokens or declined comes back as a
-                # response with its stop reason instead of as a parsing exception.
-                message = await self._client.messages.create(
-                    model=request.model,
-                    max_tokens=request.max_tokens,
-                    system=request.system,
-                    messages=[{"role": "user", "content": request.user}],
-                    output_config={
-                        "effort": request.effort,
-                        "format": {
-                            "type": "json_schema",
-                            "schema": anthropic.transform_schema(request.schema),
-                        },
-                    },
-                )
+                message = await self._client.messages.create(**message_params(request))
             except TypeError as error:
                 # What the SDK raises before sending anything when it has no credentials.
                 if "authentication method" not in str(error):
@@ -70,7 +78,7 @@ class ClaudeLLM:
                 failure, retry_after = error, None
             else:
                 latency = time.perf_counter() - started
-                return _response(request, message, latency, attempt)
+                return to_response(request, message, latency, attempt)
             if attempt == MAX_ATTEMPTS:
                 raise LLMError(f"no response after {MAX_ATTEMPTS} attempts: {failure}") from failure
             backoff = min(BASE_DELAY_S * 2 ** (attempt - 1), MAX_DELAY_S) + random.uniform(0, 1)
@@ -86,8 +94,13 @@ def _retry_after(error: anthropic.RateLimitError) -> float | None:
         return None
 
 
-def _response(
-    request: LLMRequest, message: anthropic.types.Message, latency: float, attempts: int
+def to_response(
+    request: LLMRequest,
+    message: anthropic.types.Message,
+    latency: float,
+    attempts: int,
+    *,
+    batch: bool = False,
 ) -> LLMResponse:
     # An alias may resolve to a dated snapshot of the same model. Anything else served the
     # request in place of the model that was asked for, and its answer must not be scored.
@@ -106,5 +119,7 @@ def _response(
         ),
         latency_s=round(latency, 3),
         attempts=attempts,
-        request_id=message._request_id,
+        # Set on a message that is the response of a request, not on one inside a batch result.
+        request_id=getattr(message, "_request_id", None),
+        batch=batch,
     )
