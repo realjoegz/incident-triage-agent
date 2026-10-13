@@ -13,3 +13,27 @@ services:
       interval: 2s
       timeout: 2s
       retries: 30
+
+  api:
+    build: .
+    environment:
+      TRIAGE_DATABASE_URL: postgresql://triage:triage@db:5432/triage
+      # `replay` answers the labelled incidents from the recorded responses of the evaluation
+      # and needs no key. The default calls the Claude API.
+      TRIAGE_LLM: ${TRIAGE_LLM:-anthropic}
+      # Passed through from the shell that runs compose, if it is set there.
+      ANTHROPIC_API_KEY:
+    ports:
+      - "127.0.0.1:8088:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz')"
+      interval: 3s
+      timeout: 3s
+      retries: 40

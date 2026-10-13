@@ -62,3 +62,25 @@ jobs:
       - run: uv run triage data check
 
       - run: uv run pytest
+
+  local-stack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # The API answers from the recorded responses of the evaluation.
+      TRIAGE_LLM: replay
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - run: docker compose build
+
+      - run: docker compose up --detach --wait
+
+      # In replay mode the script also checks the two answers it prints.
+      - run: scripts/demo.sh
+
+      - if: failure()
+        run: docker compose logs --no-color
+
+      - if: always()
+        run: docker compose down --volumes

@@ -123,11 +123,13 @@ def test_in_replay_mode_an_incident_without_a_recording_is_unavailable_not_inven
         update={"llm": "replay", "eval_dir": settings.data_dir / "nowhere"}
     )
     with TestClient(create_app(replay)) as client:
-        recorded_nowhere = client.post("/v1/triage", json=incident.incident.model_dump())
-        never_embedded = client.post("/v1/triage", json={"ticket_text": "Checkout is slow today."})
+        labelled = client.post("/v1/triage", json=incident.incident.model_dump())
+        unseen = client.post("/v1/triage", json={"ticket_text": "Checkout is slow today."})
+        search = client.post("/v1/search", json={"query": "Checkout is slow today."})
 
-    assert recorded_nowhere.status_code == 503
-    assert "replay mode answers only the recorded prompts" in recorded_nowhere.json()["detail"]
-    # Replay searches with the committed vectors alone, and this text has none.
-    assert never_embedded.status_code == 503
-    assert "not in the embedding snapshot" in never_embedded.json()["detail"]
+    for reply in (labelled, unseen):
+        assert reply.status_code == 503
+        assert "replay mode answers only the recorded prompts" in reply.json()["detail"]
+    # Searching needs no model answer, so it works for any text in either mode.
+    assert search.status_code == 200
+    assert len(search.json()) == 5

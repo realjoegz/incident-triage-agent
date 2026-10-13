@@ -72,11 +72,11 @@ def create_app(settings: Settings | None = None, llm: LLM | None = None) -> Fast
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        # Replay answers by the hash of the prompt, so its searches must use the committed
-        # vectors, as the evaluation did.
-        snapshot_only = settings.llm == "replay"
+        # A text that the snapshot holds gets its committed vector, so a labelled incident is
+        # searched here exactly as the evaluation searched it and its recorded answer is found
+        # in replay mode. Any other text goes to the embedding model.
         async with (
-            open_retriever(settings, snapshot_only=snapshot_only) as retriever,
+            open_retriever(settings, snapshot_only=False) as retriever,
             Client(build_server(retriever)) as client,
         ):
             tools = EvidenceTools(client)
@@ -104,7 +104,10 @@ def create_app(settings: Settings | None = None, llm: LLM | None = None) -> Fast
     @app.post("/v1/search")
     async def search(request: Request, body: SearchRequest) -> list[Evidence]:
         tools: EvidenceTools = request.app.state.tools
-        return await tools.search(body.query, body.mode, body.limit)
+        try:
+            return await tools.search(body.query, body.mode, body.limit)
+        except EvidenceError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
 
     @app.post("/v1/triage")
     async def triage(request: Request, body: TriageRequest) -> TriageResponse:
