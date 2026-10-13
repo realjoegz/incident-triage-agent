@@ -231,7 +231,7 @@ def _eval_baseline(settings: Settings, args: argparse.Namespace) -> int:
 
 
 def _eval_gate(settings: Settings, args: argparse.Namespace) -> int:
-    findings = asyncio.run(gate.run(settings, args.readme))
+    findings = asyncio.run(gate.run(settings, args.tables))
     for finding in findings:
         print(finding)
     failed = [finding for finding in findings if not finding.ok]
@@ -242,10 +242,10 @@ def _eval_gate(settings: Settings, args: argparse.Namespace) -> int:
 def _eval_report(settings: Settings, args: argparse.Namespace) -> int:
     summary = _committed_summary(settings)
     if args.update:
-        args.update.write_text(
-            report.with_table(args.update.read_text(encoding="utf-8"), summary), encoding="utf-8"
-        )
-        print(f"updated the table in {args.update}")
+        for document in args.update:
+            text = document.read_text(encoding="utf-8")
+            document.write_text(report.with_tables(text, summary), encoding="utf-8")
+            print(f"updated the tables in {document}")
         return 0
     print(report.detail_table(summary) if args.detail else report.results_table(summary))
     return 0
@@ -313,11 +313,17 @@ def build_parser() -> argparse.ArgumentParser:
         "baseline", help="accept the committed results as the new baseline"
     ).set_defaults(run=_eval_baseline)
     check = evaluation.add_parser("gate", help="what CI runs: fail if anything got worse")
-    check.add_argument("--readme", type=Path, help="also check the results table of this file")
+    check.add_argument(
+        "--tables",
+        type=Path,
+        nargs="*",
+        default=[],
+        help="documents whose tables must be the rendered ones; the README comes first",
+    )
     check.set_defaults(run=_eval_gate)
     table = evaluation.add_parser("report", help="print the results table")
     table.add_argument("--detail", action="store_true", help="the longer table of the docs")
-    table.add_argument("--update", type=Path, help="write the table into this file's markers")
+    table.add_argument("--update", type=Path, nargs="+", help="write the tables into these files")
     table.set_defaults(run=_eval_report)
 
     return parser

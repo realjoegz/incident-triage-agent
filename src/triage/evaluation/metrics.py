@@ -106,6 +106,7 @@ class Graded:
     def __init__(self, variant: Variant, rows: Sequence[Row], labels: Mapping[str, Label]) -> None:
         self.variant = variant
         self.fault_of = {case: label.fault_id for case, label in labels.items()}
+        self.presentation_of = {case: label.presentation for case, label in labels.items()}
         self.rows = sorted(rows, key=lambda row: (row.case_id, row.rep))
         self.grades: list[tuple[Row, Grade]] = [
             (row, grade(row, labels[row.case_id], retrieves=variant.mode != "none"))
@@ -184,6 +185,16 @@ class Graded:
             "root_cause_accuracy": _rate(accuracy),
             "root_cause_accuracy_interval": interval(accuracy, self.fault_of),
             "root_cause_accuracy_by_repetition": by_rep,
+            "root_cause_accuracy_by_presentation": {
+                presentation: _rate(
+                    {
+                        case: value
+                        for case, value in accuracy.items()
+                        if self.presentation_of[case] == presentation
+                    }
+                )
+                for presentation in sorted(set(self.presentation_of.values()))
+            },
             "root_cause_accuracy_citing_the_fault": _rate(citing_the_fault),
             "wrong_cause_rate": _rate(self.per_case("wrong_cause", answerable=True)),
             "abstained_despite_evidence_rate": _rate(self.per_case("abstained", answerable=True)),

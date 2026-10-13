@@ -1,11 +1,11 @@
-"""The results table, rendered from the summary file.
+"""The tables of the README and of the docs, rendered from the summary file.
 
-The README does not hold numbers that someone typed. Its table sits between two markers, and
-the gate fails when the text between them is not what this module renders from the committed
-results.
+No document holds a table that someone typed. A table sits between two markers, such as
+`<!-- results:start -->` and `<!-- results:end -->`, and the gate fails when the text between
+them is not what this module renders from the committed results.
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 START = "<!-- results:start -->"
@@ -88,25 +88,61 @@ def detail_table(summary: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _between_markers(text: str) -> str | None:
-    if text.count(START) != 1 or text.count(END) != 1:
+def presentation_table(summary: Mapping[str, Any]) -> str:
+    """Root-cause accuracy by the way an incident is shown."""
+    kinds = ["signature", "paraphrase", "downstream"]
+    lines = ["| Variant | " + " | ".join(f"`{kind}`" for kind in kinds) + " |", "|---|---|---|---|"]
+    for values in summary["variants"].values():
+        by_kind = values["root_cause_accuracy_by_presentation"]
+        cells = [_percent(by_kind.get(kind)) for kind in kinds]
+        lines.append(f"| {values['label']} | " + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
+TABLES: dict[str, Callable[[Mapping[str, Any]], str]] = {
+    "results": results_table,
+    "detail": detail_table,
+    "presentation": presentation_table,
+}
+
+
+def _markers(name: str) -> tuple[str, str]:
+    return f"<!-- {name}:start -->", f"<!-- {name}:end -->"
+
+
+def _between(text: str, name: str) -> str | None:
+    """What is between the markers of a table, or None when they are not there exactly once."""
+    start, end = _markers(name)
+    if text.count(start) != 1 or text.count(end) != 1:
         return None
-    return text.split(START)[1].split(END)[0].strip()
+    return text.split(start)[1].split(end)[0].strip()
 
 
-def readme_problem(text: str, summary: Mapping[str, Any]) -> str | None:
-    found = _between_markers(text)
-    if found is None:
-        return f"expected exactly one {START} and one {END}"
-    if found != results_table(summary):
-        return "the table is not that of eval/results/summary.json; run `triage eval report`"
-    return None
+def problems(text: str, summary: Mapping[str, Any], require: str | None = None) -> list[str]:
+    """What is wrong with the tables of a document. `require` names one that must be there."""
+    found = []
+    for name, render in TABLES.items():
+        start, end = _markers(name)
+        if start not in text and end not in text and name != require:
+            continue
+        between = _between(text, name)
+        if between is None:
+            found.append(f"expected exactly one {start} and one {end}")
+        elif between != render(summary):
+            found.append(
+                f"the {name} table is not that of eval/results/summary.json; "
+                "run `triage eval report --update`"
+            )
+    return found
 
 
-def with_table(text: str, summary: Mapping[str, Any]) -> str:
-    """The text with what is between the markers replaced by the current table."""
-    if _between_markers(text) is None:
-        raise ValueError(f"expected exactly one {START} and one {END}")
-    before, rest = text.split(START)
-    _, after = rest.split(END)
-    return f"{before}{START}\n{results_table(summary)}\n{END}{after}"
+def with_tables(text: str, summary: Mapping[str, Any]) -> str:
+    """The text with every table that it has markers for replaced by the current one."""
+    for name, render in TABLES.items():
+        if _between(text, name) is None:
+            continue
+        start, end = _markers(name)
+        before, rest = text.split(start)
+        _, after = rest.split(end)
+        text = f"{before}{start}\n{render(summary)}\n{end}{after}"
+    return text

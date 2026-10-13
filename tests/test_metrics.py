@@ -356,3 +356,12 @@ def test_an_interval_resamples_whole_faults_when_it_is_told_which_incident_is_wh
     assert by_fault[1] - by_fault[0] > by_incident[1] - by_incident[0]
     assert by_fault == [0.0, 1.0]
     assert interval({"A1": 1.0, "A2": 0.0}, {"A1": "A", "A2": "A"}) is None
+
+
+def test_accuracy_is_also_given_for_each_way_an_incident_is_shown() -> None:
+    told = label("B").model_copy(update={"presentation": "paraphrase"})
+    rows = [row("A"), row("B", 0), abstaining("B", 1)]
+
+    result = summary(rows, label("A"), told)
+
+    assert result["root_cause_accuracy_by_presentation"] == {"paraphrase": 0.5, "signature": 1.0}

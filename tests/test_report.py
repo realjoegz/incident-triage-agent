@@ -2,7 +2,14 @@ from typing import Any
 
 import pytest
 
-from triage.evaluation.report import END, START, readme_problem, results_table, with_table
+from triage.evaluation.report import (
+    END,
+    START,
+    presentation_table,
+    problems,
+    results_table,
+    with_tables,
+)
 
 
 def variant(label: str, **changes: Any) -> dict[str, Any]:
@@ -46,29 +53,59 @@ def test_the_table_has_one_row_per_variant_in_the_order_of_the_summary() -> None
 def test_a_readme_whose_table_is_the_rendered_one_has_no_problem() -> None:
     readme = f"# Title\n\n{START}\n{TABLE}\n{END}\n\nMore text.\n"
 
-    assert readme_problem(readme, SUMMARY) is None
+    assert problems(readme, SUMMARY, require="results") == []
 
 
 def test_a_number_typed_into_the_readme_is_a_problem() -> None:
     readme = f"{START}\n{TABLE.replace('92%', '95%')}\n{END}\n"
 
-    assert readme_problem(readme, SUMMARY) == (
-        "the table is not that of eval/results/summary.json; run `triage eval report`"
-    )
+    assert problems(readme, SUMMARY) == [
+        "the results table is not that of eval/results/summary.json; "
+        "run `triage eval report --update`"
+    ]
 
 
 @pytest.mark.parametrize(
     "readme", ["no markers at all", f"{START}\nonly a start", f"{START}{START}{END}"]
 )
 def test_a_readme_without_exactly_one_pair_of_markers_is_a_problem(readme: str) -> None:
-    assert readme_problem(readme, SUMMARY) == f"expected exactly one {START} and one {END}"
+    assert problems(readme, SUMMARY, require="results") == [
+        f"expected exactly one {START} and one {END}"
+    ]
+
+
+def test_a_document_without_markers_has_no_table_to_be_wrong() -> None:
+    assert problems("prose only", SUMMARY) == []
 
 
 def test_updating_replaces_what_is_between_the_markers_and_nothing_else() -> None:
     readme = f"Before.\n\n{START}\nan old table\n{END}\n\nAfter.\n"
 
-    updated = with_table(readme, SUMMARY)
+    updated = with_tables(readme, SUMMARY)
 
     assert updated == f"Before.\n\n{START}\n{TABLE}\n{END}\n\nAfter.\n"
-    assert readme_problem(updated, SUMMARY) is None
-    assert with_table(updated, SUMMARY) == updated
+    assert problems(updated, SUMMARY, require="results") == []
+    assert with_tables(updated, SUMMARY) == updated
+
+
+def test_each_table_a_document_has_markers_for_is_checked_and_updated() -> None:
+    summary = {
+        "variants": {
+            name: {
+                **values,
+                "root_cause_accuracy_by_presentation": {"signature": 1.0, "paraphrase": 0.5897},
+            }
+            for name, values in SUMMARY["variants"].items()
+        }
+    }
+    marked = "<!-- presentation:start -->\nold\n<!-- presentation:end -->"
+    document = f"{START}\n{TABLE}\n{END}\n\n{marked}\n"
+
+    assert problems(document, summary) == [
+        "the presentation table is not that of eval/results/summary.json; "
+        "run `triage eval report --update`"
+    ]
+    updated = with_tables(document, summary)
+    assert problems(updated, summary) == []
+    assert presentation_table(summary) in updated
+    assert "| Hybrid, Haiku 5.5 | 100% | 59% | n/a |" in updated

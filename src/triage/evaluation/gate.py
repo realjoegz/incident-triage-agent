@@ -12,10 +12,13 @@ It needs no API key. Four things are checked, in this order:
 4. The metrics of the committed results are compared with the baseline. A new paid run that is
    worse than the baseline by more than the tolerance fails, until someone accepts it by
    committing a new baseline, where a reviewer can see it.
+
+It also checks that the tables in the README and the docs are the ones rendered from the
+committed results.
 """
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -161,7 +164,7 @@ async def measure_retrieval(settings: Settings) -> dict[str, dict[str, object]]:
     return metrics
 
 
-async def run(settings: Settings, readme: Path | None) -> list[Finding]:
+async def run(settings: Settings, documents: Sequence[Path] = ()) -> list[Finding]:
     results_dir = settings.eval_dir / RESULTS_DIR
     baseline = json.loads((settings.eval_dir / BASELINE_FILE).read_text(encoding="utf-8"))
     findings = []
@@ -203,9 +206,15 @@ async def run(settings: Settings, readme: Path | None) -> list[Finding]:
     findings += variant_findings(summary, baseline)
     findings.append(control_finding(summary))
 
-    if readme is not None:
-        problem = report.readme_problem(readme.read_text(encoding="utf-8"), summary)
+    for position, document in enumerate(documents):
+        # The first document is the README, which must have the results table.
+        found = report.problems(
+            document.read_text(encoding="utf-8"), summary, "results" if position == 0 else None
+        )
         findings.append(
-            Finding(problem is None, f"readme: {problem or 'the table is that of the results'}")
+            Finding(
+                not found,
+                f"{document.name}: " + ("; ".join(found) or "its tables are those of the results"),
+            )
         )
     return findings

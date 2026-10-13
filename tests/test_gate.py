@@ -209,7 +209,7 @@ def committed_summary(state: Settings) -> dict[str, Any]:
 
 
 async def run_gate(state: Settings) -> list[gate.Finding]:
-    return await gate.run(state, state.eval_dir / "README.md")
+    return await gate.run(state, [state.eval_dir / "README.md"])
 
 
 async def test_a_repository_in_order_passes_every_check(state: Settings) -> None:
@@ -219,7 +219,7 @@ async def test_a_repository_in_order_passes_every_check(state: Settings) -> None
     messages = [finding.message for finding in findings]
     assert "replay: 750 rows rebuilt from the recorded answers" in messages
     assert "results: summary.json is what the replay computes" in messages
-    assert "readme: the table is that of the results" in messages
+    assert "README.md: its tables are those of the results" in messages
     assert "judge: the expected verdict on 144 of 144 controls" in messages
     # A run that pays nothing still writes run.json, which the gate does not compare.
     assert (state.eval_dir / gate.RESULTS_DIR / runner.RUN_FILE).exists()
@@ -273,7 +273,7 @@ async def test_a_number_edited_in_the_results_fails(state: Settings) -> None:
         for message in failed
     )
     # The README still shows the number that the replay computes, not the edited one.
-    assert any(message.startswith("readme: the table is not that of") for message in failed)
+    assert any(message.startswith("README.md: the results table is not") for message in failed)
 
 
 async def test_an_answer_edited_in_the_rows_fails(state: Settings) -> None:
@@ -313,7 +313,8 @@ async def test_a_readme_table_that_is_not_the_rendered_one_fails(state: Settings
     readme.write_text(readme.read_text().replace("100%", "99%", 1))
 
     assert failures(await run_gate(state)) == [
-        "readme: the table is not that of eval/results/summary.json; run `triage eval report`"
+        "README.md: the results table is not that of eval/results/summary.json; "
+        "run `triage eval report --update`"
     ]
 
 

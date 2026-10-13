@@ -26,6 +26,11 @@
         0.4211,
         0.4474
       ],
+      "root_cause_accuracy_by_presentation": {
+        "downstream": 0.1538,
+        "paraphrase": 0.2564,
+        "signature": 0.9167
+      },
       "root_cause_accuracy_citing_the_fault": null,
       "wrong_cause_rate": 0.0789,
       "abstained_despite_evidence_rate": 0.4912,
@@ -75,6 +80,11 @@
         0.6316,
         0.6316
       ],
+      "root_cause_accuracy_by_presentation": {
+        "downstream": 0.2308,
+        "paraphrase": 0.6154,
+        "signature": 0.9722
+      },
       "root_cause_accuracy_citing_the_fault": 0.5965,
       "wrong_cause_rate": 0.0088,
       "abstained_despite_evidence_rate": 0.3947,
@@ -127,6 +137,11 @@
         0.6053,
         0.5526
       ],
+      "root_cause_accuracy_by_presentation": {
+        "downstream": 0.3846,
+        "paraphrase": 0.3846,
+        "signature": 1.0
+      },
       "root_cause_accuracy_citing_the_fault": 0.5789,
       "wrong_cause_rate": 0.0,
       "abstained_despite_evidence_rate": 0.4211,
@@ -179,6 +194,11 @@
         0.6316,
         0.6579
       ],
+      "root_cause_accuracy_by_presentation": {
+        "downstream": 0.4359,
+        "paraphrase": 0.5897,
+        "signature": 1.0
+      },
       "root_cause_accuracy_citing_the_fault": 0.6667,
       "wrong_cause_rate": 0.0,
       "abstained_despite_evidence_rate": 0.3333,
@@ -231,6 +251,11 @@
         0.7895,
         0.7632
       ],
+      "root_cause_accuracy_by_presentation": {
+        "downstream": 0.5897,
+        "paraphrase": 0.7949,
+        "signature": 1.0
+      },
       "root_cause_accuracy_citing_the_fault": 0.7895,
       "wrong_cause_rate": 0.0,
       "abstained_despite_evidence_rate": 0.2105,

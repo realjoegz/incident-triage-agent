@@ -18,6 +18,14 @@ Five variants answered 50 labelled incidents three times each. The corpus docume
 | Hybrid, Sonnet 5.5 | 0.93 | 79% | 100% | 97% | $0.0103 | 2.8 s / 6.5 s |
 <!-- results:end -->
 
+- **With retrieval, a named cause was right 300 times in 301.** No variant with retrieval named a cause for any of the 12 incidents that the corpus does not document.
+- **The errors are abstentions.** The default variant, Haiku with hybrid retrieval, says "insufficient evidence" for 33% of the incidents that the corpus does document, and Sonnet for 21%. All of those are incidents shown without the fault's own log line.
+- **Retrieval adds 24 points over none**, with a 95% interval of 11 to 39. The three retrieval methods cannot be told apart by accuracy on 38 incidents; by recall they can.
+- **Sonnet adds 12 points for 15 times the cost**, with an interval of 0 to 25.
+- **The judge gave the expected verdict on all 144 of its controls**, and rejected 22 of 301 answers, each for a detail added to a supported cause.
+
+The run made 1,145 paid calls and cost $3.73. [Section 6](docs/evaluation.md#6-results) has the intervals, the breakdown and what the judge rejected, and [section 7](docs/evaluation.md#7-how-far-to-trust-this) says how far 50 synthetic incidents can be trusted.
+
 ## Run it locally
 
 You need Docker with Compose, `curl` and `jq`, and ports 8088 and 54329 free on the loopback address.
@@ -104,7 +112,7 @@ To read the code, start with [`graph.py`](src/triage/agent/graph.py) (the pipeli
 docker compose up --detach --wait db
 uv sync
 uv run pytest
-uv run triage eval gate --readme README.md
+uv run triage eval gate --tables README.md docs/evaluation.md
 ```
 
 You need [uv](https://docs.astral.sh/uv/) and Docker. `uv run triage eval replay` rebuilds the results from the recordings. `uv run triage eval run --max-usd 8` runs the evaluation against the API and pays only for calls that have no recording.
