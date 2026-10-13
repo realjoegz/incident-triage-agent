@@ -4,6 +4,7 @@ from collections.abc import Callable, Sequence
 
 from triage.agent.prompts import incident_block
 from triage.dataset.catalogue import Catalogue
+from triage.evaluation.judge import SEEN
 from triage.evaluation.rows import Verdict
 from triage.llm.base import LLMRequest, LLMResponse, Usage
 from triage.models import (
@@ -113,8 +114,9 @@ class FixedSearch:
 class RuleLLM:
     """Answers triage requests with `triage(label, prompt)` and judge requests by construction.
 
-    The judge rule is the one the controls are built on: a passage supports a stated cause when
-    it is the first sentence of that same cause in the catalogue.
+    The judge rule is the one the controls are built on. A stated cause is supported when it
+    is, word for word, a cause of the catalogue that a cited document states, followed by
+    nothing or by a sentence about the incident that the incident contains.
     """
 
     def __init__(
@@ -131,10 +133,16 @@ class RuleLLM:
     async def complete(self, request: LLMRequest) -> LLMResponse:
         self.requests.append(request)
         if request.schema is Verdict:
-            stated, passages = request.user.split("<cited_passages>")
-            supported = any(
-                cause in stated and cause.split(". ")[0] + "." in passages for cause in self._causes
-            )
+            before, documents = request.user.split("</stated_cause>")
+            incident, stated = before.split("<stated_cause", 1)
+            stated = stated.split(">\n", 1)[1].strip()
+            supported = False
+            for cause in self._causes:
+                if stated.startswith(cause) and cause in documents:
+                    rest = stated[len(cause) :].strip()
+                    supported = not rest or (
+                        rest.startswith(SEEN) and rest[len(SEEN) :] in incident
+                    )
             text = Verdict(reason="by construction", supported=supported).model_dump_json()
         else:
             block = request.user.split("\n\n<evidence>")[0].split("\n\n<previous_answer>")[0]

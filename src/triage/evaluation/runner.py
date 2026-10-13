@@ -40,7 +40,7 @@ from triage.llm.recording import (
     ReplayLLM,
 )
 from triage.mcp_server import EvidenceTools, build_server
-from triage.models import Document, LabelledIncident
+from triage.models import Document, Incident, LabelledIncident
 from triage.runtime import open_retriever
 from triage.settings import Settings
 
@@ -157,15 +157,19 @@ async def evaluate(
         raise stopped
 
     by_id = {document.id: document for document in corpus}
+    incidents = {item.id: item.incident for item in labelled}
     judge_recordings = Recordings(recordings_dir / f"{JUDGE_RECORDINGS}.jsonl")
-    checks = judging.controls(load_catalogue(data_dir), corpus)
+    checks = judging.controls(load_catalogue(data_dir), corpus, labelled)
     if control_count is not None:
         checks = checks[:control_count]
     control_results: list[dict[str, object]] = []
     if judge != "none":
         to_judge = [row for row in rows if judging.needs_judging(row)]
         if live and judge == "batch" and paid_llm is None:
-            requests = [judging.judge_input(row, by_id).request() for row in to_judge]
+            requests = [
+                judging.judge_input(row, incidents[row.case_id], by_id).request()
+                for row in to_judge
+            ]
             requests += [check.input.request() for check in checks]
             failed = await fill_from_batch(
                 anthropic.AsyncAnthropic(max_retries=2, timeout=REQUEST_TIMEOUT_S),
@@ -178,7 +182,7 @@ async def evaluate(
             for failure in failed:
                 log(f"judge: the batch gave no verdict for {failure}; asking directly")
         judge_llm = llm_for(judge_recordings, 0)
-        errors += await _judge_rows(to_judge, by_id, judge_llm)
+        errors += await _judge_rows(to_judge, incidents, by_id, judge_llm)
         control_results, control_errors = await _judge_controls(checks, judge_llm)
         errors += control_errors
         if live:
@@ -266,11 +270,16 @@ async def _ask_judge(llm: LLM, request: LLMRequest) -> LLMResponse:
 
 
 async def _judge_rows(
-    rows: Sequence[Row], corpus: Mapping[str, Document], llm: LLM
+    rows: Sequence[Row],
+    incidents: Mapping[str, Incident],
+    corpus: Mapping[str, Document],
+    llm: LLM,
 ) -> list[ErrorRow]:
     """Sets the verdict on each row. Rows with the same claim and citations share one call."""
     gate = asyncio.Semaphore(CONCURRENCY)
-    requests = {id(row): judging.judge_input(row, corpus).request() for row in rows}
+    requests = {
+        id(row): judging.judge_input(row, incidents[row.case_id], corpus).request() for row in rows
+    }
     sharing: dict[str, int] = {}
     for request in requests.values():
         sharing[request.fingerprint()] = sharing.get(request.fingerprint(), 0) + 1

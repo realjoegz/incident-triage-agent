@@ -168,7 +168,8 @@ def _eval_estimate(settings: Settings, args: argparse.Namespace) -> int:
     """Projects the cost of the full run from the rows of a sample run."""
     with (args.sample / runner.ROWS_FILE).open(encoding="utf-8") as lines:
         rows = [Row.model_validate_json(line) for line in lines if line.strip()]
-    incidents = len(load_labelled(settings.data_dir))
+    labelled = load_labelled(settings.data_dir)
+    incidents = len(labelled)
     planned = incidents * runner.REPETITIONS
     agents = 0.0
     judged_answers = 0.0
@@ -189,7 +190,7 @@ def _eval_estimate(settings: Settings, args: argparse.Namespace) -> int:
     verdicts = [row for row in rows if row.judge is not None]
     per_verdict = sum(row.judge_cost_usd for row in verdicts) / len(verdicts) if verdicts else 0.0
     controls = len(
-        judge.controls(load_catalogue(settings.data_dir), load_corpus(settings.data_dir))
+        judge.controls(load_catalogue(settings.data_dir), load_corpus(settings.data_dir), labelled)
     )
     judge_direct = per_verdict * (judged_answers + controls)
     print(

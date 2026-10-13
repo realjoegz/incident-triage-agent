@@ -24,6 +24,7 @@ _EVIDENCE_LIST = TypeAdapter(list[Evidence])
 def build_server(retriever: Retriever) -> MCPServer:
     server = MCPServer(
         "incident-evidence",
+        log_level="WARNING",
         instructions=(
             "Past incident reports and runbook sections. search_evidence ranks them against a "
             "description of an incident; get_document returns one of them by id."

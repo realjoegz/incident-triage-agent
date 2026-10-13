@@ -86,12 +86,18 @@ async def test_a_model_that_knows_the_answers_scores_exactly_what_retrieval_lets
 
     controls: dict[str, Any] = evaluation.summary["judge"]["controls"]  # type: ignore[index]
     assert controls == {
-        "controls": 72,
-        "as_expected": 72,
+        "controls": 144,
+        "as_expected": 144,
         "by_kind": {
-            "other_cause": {"controls": 24, "as_expected": 24},
-            "supported": {"controls": 24, "as_expected": 24},
-            "symptom_only": {"controls": 24, "as_expected": 24},
+            kind: {"controls": 24, "as_expected": 24}
+            for kind in (
+                "adds_a_fact",
+                "incident_report",
+                "no_mechanism",
+                "other_fault",
+                "runbook_section",
+                "says_what_it_saw",
+            )
         },
     }
 
@@ -118,7 +124,8 @@ async def test_cost_is_the_recorded_tokens_at_the_price_of_each_variants_model(
 def _any_request() -> LLMRequest:
     from triage.evaluation.rows import Verdict
 
-    return LLMRequest("claude-haiku-5-5", "low", 100, "", "<cited_passages>", Verdict)
+    user = '<stated_cause category="unknown">\nnone\n</stated_cause>'
+    return LLMRequest("claude-haiku-5-5", "low", 100, "", user, Verdict)
 
 
 async def test_a_model_that_always_abstains_is_never_right_about_a_cause(
