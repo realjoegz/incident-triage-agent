@@ -26,6 +26,7 @@ flowchart LR
     C -->|a citation failed, first time| P[repair]
     C -->|a citation failed again| F
     P --> C
+    P -->|refused, cut off or invalid| F
     F --> T([triage or insufficient evidence])
 ```
 
@@ -53,7 +54,7 @@ Three details matter for measurement:
 
 ## 4. The MCP boundary
 
-The agent does not import the retriever. It calls two tools on an MCP server ([`mcp_server.py`](../src/triage/mcp_server.py)): `search_evidence` and `get_document`. Inside the API and the evaluation the client is connected to the server object in the same process. `triage mcp` serves the same object over stdio, and a test starts it as a subprocess and searches through it.
+The agent holds no retriever and no database connection. It calls one tool on an MCP server ([`mcp_server.py`](../src/triage/mcp_server.py)), `search_evidence`. The server also offers `get_document`, which the agent does not use. Inside the API and the evaluation the client is connected to the server object in the same process. `triage mcp` serves the same object over stdio, and a test starts it as a subprocess and searches through it.
 
 What this buys is one definition of "the evidence the agent can reach", usable by another client. What it costs is a serialisation round trip per search, which is inside the search latency reported in [evaluation.md](evaluation.md).
 
@@ -98,7 +99,7 @@ Two mechanisms make the evaluation repeatable without an API key.
 - **The Citations feature of the API.** It returns character ranges that the API itself verifies. It cannot be combined with schema-constrained output, and the agent needs the schema more.
 - **A similarity threshold for abstaining.** Cosine scores of unrelated incidents on the same service overlap with those of related ones. The decision is left to the model, and the check bounds what it can claim.
 - **LangChain's model wrappers.** The nodes call the Anthropic SDK through the interface above, so recording, replay and cost accounting see every request.
-- **A hosted embedding API.** It would be a second paid dependency, and CI would need its key to measure retrieval.
+- **A hosted embedding API.** It would be a second paid dependency, and the test that recomputes the committed vectors would need its key in CI.
 
 ## 9. Limits
 

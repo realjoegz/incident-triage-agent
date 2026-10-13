@@ -10,4 +10,4 @@ Where to start:
 
 - To judge the numbers, read sections 2, 3 and 6 of [evaluation.md](evaluation.md): the metrics, the judge and the results.
 - To judge the design, read sections 1, 5 and 9 of [design.md](design.md): the promise, the citation check and the limits.
-- To check a number, find it in [`eval/results/summary.json`](../eval/results/summary.json), then run `triage eval replay`, which computes it again from the recorded answers without an API key.
+- To check a number, find it in [`eval/results/summary.json`](../eval/results/summary.json), then run `triage eval replay --out replayed`, which writes the same result files again from the recorded answers without an API key.

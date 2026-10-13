@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/realjoegz/incident-triage-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/realjoegz/incident-triage-agent/actions/workflows/ci.yml)
 
-An incident triage agent in Python on FastAPI, LangGraph, PostgreSQL with pgvector, and MCP. It takes an incident (an alert, a ticket, a log excerpt), retrieves similar past incidents and runbook sections, and returns a root-cause category with the likely cause, the next diagnostic step and quoted evidence. When the documents do not cover the incident, it says so. Two things are unusual. Code, not the prompt, decides whether a cause is allowed out: it needs a quote that is word for word in a retrieved document. And every number below is measured on a labelled set, and CI fails when a change makes one worse. CI needs no API key for that: it replays recorded model answers through the current code.
+An incident triage agent in Python on FastAPI, LangGraph, PostgreSQL with pgvector, and MCP. It takes an incident (an alert, a ticket, a log excerpt), retrieves similar past incidents and runbook sections, and returns a root-cause category with the likely cause, the next diagnostic step and quoted evidence. When the documents do not cover the incident, it is built to say so. Two things are unusual. Code, not the prompt, decides whether a cause is allowed out: it needs a quote that is word for word in a retrieved document. And the numbers below are measured on a labelled set, and CI fails when a change takes accuracy, abstention, faithfulness, recall or cost past a committed baseline. CI needs no API key for that: it replays recorded model answers through the current code.
 
 ## Results
 
@@ -20,11 +20,11 @@ Five variants answered 50 labelled incidents three times each. The corpus docume
 
 - **With retrieval, a named cause was right 300 times in 301.** No variant with retrieval named a cause for any of the 12 incidents that the corpus does not document.
 - **The errors are abstentions.** The default variant, Haiku with hybrid retrieval, says "insufficient evidence" for 33% of the incidents that the corpus does document, and Sonnet for 21%. All of those are incidents shown without the fault's own log line.
-- **Retrieval adds 24 points over none**, with a 95% interval of 11 to 39. The three retrieval methods cannot be told apart by accuracy on 38 incidents; by recall they can.
+- **Retrieval adds 24 points over none**, with a 95% interval of 11 to 39. The three retrieval methods cannot be told apart by accuracy on 38 incidents. On recall, full text is behind the other two.
 - **Sonnet adds 12 points for 15 times the cost**, with an interval of 0 to 25.
 - **The judge gave the expected verdict on all 144 of its controls**, and rejected 22 of 301 answers, each for a detail added to a supported cause.
 
-The run made 1,145 paid calls and cost $3.73. [Section 6](docs/evaluation.md#6-results) has the intervals, the breakdown and what the judge rejected, and [section 7](docs/evaluation.md#7-how-far-to-trust-this) says how far 50 synthetic incidents can be trusted.
+The final run paid $3.73 for 1,145 calls. [Section 6](docs/evaluation.md#6-results) has the intervals, the breakdown and what the judge rejected, and [section 7](docs/evaluation.md#7-how-far-to-trust-this) says how far 50 synthetic incidents can be trusted.
 
 ## Run it locally
 
@@ -58,24 +58,24 @@ flowchart LR
 - **Repair.** If a citation fails, the model gets one more call with the list of what failed.
 - **Finalize.** Citations that still fail are dropped. An answer that names a cause and has no valid citation left becomes "insufficient evidence".
 
-The agent reaches the corpus only through two MCP tools, `search_evidence` and `get_document`. `triage mcp` serves the same tools over stdio to any MCP client.
+The agent reaches the corpus only through an MCP tool, `search_evidence`. The server also offers `get_document`, and `triage mcp` serves both over stdio to any MCP client.
 
 ## How it is measured
 
 - **Labels by construction.** Each incident is rendered from a fault in a catalogue, and the fault's category is the label. No model assigned a label. [docs/data.md](docs/data.md) describes the set.
 - **Code grades what code can.** Recall, accuracy, abstention and cost are computed from the labels and from the token counts that the API reported.
-- **A judge model grades one question.** Whether the cited documents state the cause that an answer gives is put to Claude Opus 5.5, which is neither model under test.
+- **A judge model grades one question.** Whether everything an answer states as the cause is in the documents it cites or in the incident is put to Claude Opus 5.5, which is neither model under test.
 - **The harness is tested first.** A stand-in model that knows the answer key must score exactly the hit rate of the search, one that always abstains must score zero, and one that invents its quotes must be stopped by the citation check.
 - **A run can be repeated without a key.** The vectors of the corpus and the incidents are committed, and every model response is recorded under a hash of its request.
 
 ## What CI fails on
 
-`triage eval gate` runs on every push and calls no model. It fails when:
+`triage eval gate` runs in CI and calls no model. It fails when:
 
 - **Retrieval got worse.** It is measured again and compared with [`eval/baseline.json`](eval/baseline.json).
 - **The results are stale.** The evaluation is replayed, and the current code builds a prompt that has no recorded answer. A changed prompt or a changed search ends here, and the paid run has to be repeated.
 - **The results were edited.** The replay must compute the committed files byte for byte.
-- **A metric fell below its baseline** by more than its tolerance. Accepting that takes a new baseline in the same commit, where a reviewer sees it.
+- **A metric fell below its baseline** by more than its tolerance. Accepting that takes a new baseline in the same commit, where a reviewer sees it. Latency is reported and not gated.
 - **The table above is not the rendered one.**
 
 ## Design decisions
@@ -89,7 +89,7 @@ The agent reaches the corpus only through two MCP tools, `search_evidence` and `
 ## What it does not do
 
 - **No scale.** The corpus is 80 short documents and nothing is chunked.
-- **No real data.** Every incident and document is synthetic, written by one author, and all 50 incidents were visible while the prompts were written.
+- **No real data.** Every incident and document is synthetic and rendered from one catalogue, and all 50 incidents were visible while the prompts were written.
 - **No second search.** The agent cannot follow a lead from the first five documents.
 - **No check of claims at run time.** A quote is verified; whether it supports the cause is measured in the evaluation, not enforced.
 - **No hostile-text test and no redaction.** The prompt marks incident text as data, and that is all.

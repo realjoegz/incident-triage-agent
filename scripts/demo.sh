@@ -25,12 +25,12 @@ echo "== The API is up: model $(jq --raw-output .model <<<"$health"), answers fr
 
 echo
 echo "== Search: the three documents closest to one log line"
-post /v1/search '{"query": "INV-5611 unmapped location code count=4312", "limit": 3}' |
+post /v1/search '{"query": "PGW-4012 authorisation declined by upstream code=R29", "limit": 3}' |
   jq --raw-output '.[] | "\(.rank). \(.id)  \(.title)"'
 
 echo
-echo "== Triage of T10: thousands of products at zero stock, which the corpus documents"
-with_evidence=$(post /v1/triage "$(incident T10)")
+echo "== Triage of T05: a ticket about declined cards, which the corpus documents"
+with_evidence=$(post /v1/triage "$(incident T05)")
 jq '{decision: .triage.decision, category: .triage.cause_category, cause: .triage.likely_cause,
      citations: .triage.citations, next_step: .triage.next_step, cost_usd, seconds}' <<<"$with_evidence"
 
@@ -41,9 +41,9 @@ jq '{decision: .triage.decision, category: .triage.cause_category,
      next_step: .triage.next_step, retrieved: [.evidence[].id]}' <<<"$without_evidence"
 
 if [ "$mode" = replay ]; then
-  jq --exit-status '.triage.decision == "triage" and .triage.cause_category == "config_change"
+  jq --exit-status '.triage.decision == "triage" and .triage.cause_category == "rate_limiting"
     and (.triage.citations | length) > 0' <<<"$with_evidence" >/dev/null ||
-    { echo "T10 should be triaged as a configuration change, with a citation" >&2; exit 1; }
+    { echo "T05 should be triaged as rate limiting, with a citation" >&2; exit 1; }
   jq --exit-status '.triage.decision == "insufficient_evidence" and (.triage.citations | length) == 0' \
     <<<"$without_evidence" >/dev/null ||
     { echo "T06 should be answered with insufficient evidence" >&2; exit 1; }

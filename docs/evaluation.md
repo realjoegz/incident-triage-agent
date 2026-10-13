@@ -14,20 +14,20 @@ Five variants answer the same 50 incidents three times each, which is 750 answer
 | `hybrid-haiku` | both, fused | Claude Haiku 5.5 |
 | `hybrid-sonnet` | both, fused | Claude Sonnet 5.5 |
 
-The first four differ only in retrieval, and the last differs from the fourth only in the model. Every variant runs at effort `low` with a limit of 8,000 output tokens, and no sampling parameter is set. `hybrid-haiku` is what the API serves by default.
+The first four run the same model. The first has no retrieval and therefore its own prompt, without the evidence and the citation rules, and the next three differ only in the search. The last differs from the fourth only in the model. Every variant runs at effort `low` with a limit of 8,000 output tokens, and no sampling parameter is set. `hybrid-haiku` is what the API serves by default.
 
 The 50 incidents are described in [data.md](data.md): 38 are made from faults that the corpus documents, and 12 from faults that it does not.
 
 ## 2. The metrics
 
-Every rate is averaged within an incident first, over its three answers, and then across incidents. An incident counts once.
+Every rate is averaged within an incident first, over its three answers, and then across incidents. An incident counts once. Two figures of the detail table are counts over all answers instead: how many first-draft citations passed the check, and how many answers took the repair call.
 
 | Metric | Over | Definition | Graded by |
 |---|---|---|---|
 | Recall@5 | 38 incidents with evidence | Of the three documents of the fault, the share among the five retrieved | Code |
 | Root-cause accuracy | 38 incidents with evidence | The agent named the labelled category. Abstaining counts as wrong | Code |
 | Abstains without evidence | 12 incidents without evidence | The agent answered "insufficient evidence" | Code |
-| Citation faithfulness | Answers that name a cause and cite | The cited documents state the mechanism that the answer gives as the cause | Judge model |
+| Citation faithfulness | Answers that name a cause and cite | Everything the answer states as the cause is in the documents it cites or in the incident | Judge model |
 | Cost per incident | All 150 answers of a variant | Reported input and output tokens at list price | Code |
 | Latency | Answers with a model call | Time of the model calls of one answer, added up | Recorded |
 
@@ -49,7 +49,7 @@ The summary file also holds what the README leaves out: the hit rate and the rec
 
 Citation faithfulness is the one metric that needs a model. The citation check in the agent already guarantees that every quote is in its document; what code cannot tell is whether the document says what the answer claims.
 
-The judge is Claude Opus 5.5, which is neither of the models being compared. For each answer that names a cause it gets the incident, the stated cause and the cited documents with the quoted passages, and returns one sentence of reasoning and a yes or no. It does not see the label, and its prompt says that whether the cause is the right one is not its question.
+The judge is Claude Opus 5.5, which is neither of the models being compared. For each answer that names a cause it gets the incident, the stated cause and the cited documents with the quoted passages, and returns one sentence of reasoning and a yes or no. An answer is supported when the cited documents state the mechanism it gives, and nothing else that it says about the cause is missing from both the documents and the incident. It does not see the label, and its prompt says that whether the cause is the right one is not its question.
 
 **The judge is tested on controls.** For each of the 24 known faults, six inputs are built whose right verdict is known by construction:
 
@@ -64,7 +64,7 @@ The judge is Claude Opus 5.5, which is neither of the models being compared. For
 
 The gate fails if the judge gives the expected verdict on fewer than 95% of the 144.
 
-**The controls earned their place before the full run.** On a five-incident sample, the first version of the judge compared the stated cause with the quoted sentences alone and rejected two of three controls that were built to be supported: a quote is a sentence and a cause takes two. The second version read the whole cited documents but was not shown the incident, so it marked an answer down for saying what the incident's own logs showed. The third version is the one described above.
+**The controls earned their place before the full run.** On a five-incident sample, whose results are not in the repository, the first version of the judge compared the stated cause with the quoted sentences alone and rejected two of three controls that were built to be supported: a quote is a sentence and a cause takes two. The second version read the whole cited documents but was not shown the incident, so it marked an answer down for saying what the incident's own logs showed. The third version is the one described above.
 
 ## 4. Is the harness itself right?
 
@@ -76,12 +76,12 @@ Before any number of a real model is believed, the pipeline has to give a model 
 
 ## 5. What CI checks without an API key
 
-`triage eval gate` runs in CI on every push. It makes no model call.
+`triage eval gate` runs in CI on every push to `main` and on every pull request. It makes no model call.
 
 1. **Retrieval is measured again** and compared with the baseline. Search needs no model, so a change to it shows here at once.
 2. **The evaluation is replayed** from the recorded responses. The agent retrieves, builds its prompts and checks citations with the current code. A prompt with no recording fails the gate: the committed results no longer describe the code, and the paid evaluation has to be run again.
 3. **The replay must compute the committed files**, byte for byte. This catches an edited number and a change to the grading.
-4. **The results are compared with [`eval/baseline.json`](../eval/baseline.json).** A metric may fall below its baseline by a fixed tolerance and no further.
+4. **The results are compared with [`eval/baseline.json`](../eval/baseline.json).** A metric may fall below its baseline by a fixed tolerance and no further. Latency has no threshold: it is one evening's measurement and is replayed, not measured again.
 5. **The table in the README** must be the one rendered from the results.
 
 A change that makes a paid run worse than the baseline can still be merged, by committing a new baseline with it. That is deliberate: the gate does not forbid a trade-off, it makes one visible in the diff.
@@ -90,7 +90,7 @@ A change that makes a paid run worse than the baseline can still be merged, by c
 
 ## 6. Results
 
-The run of 2026-10-13: 750 answers, 301 of them judged, and 144 judge controls. It made 1,145 paid calls and cost $3.73, of which $1.84 went to the five variants and $1.89 to the judge. Every attempt got a response, and no answer was refused, cut off or invalid.
+The run of 2026-10-13: 750 answers, 301 of them judged, and 144 judge controls. It paid $3.73 for 1,145 calls. The other 46 responses had been recorded by the sample run before it. At list price the 1,191 recorded responses cost $3.97: $1.90 for the five variants and $2.07 for the judge. Every attempt got a response, and no answer was refused, cut off or invalid.
 
 <!-- results:start -->
 | Variant | Recall@5 | Root-cause accuracy | Abstains without evidence | Citation faithfulness | Cost per incident | Latency p50 / p95 |
@@ -130,9 +130,9 @@ Root-cause accuracy by the way an incident is shown ([data.md](data.md) describe
 
 **Retrieval is worth 24 points over none**, with a 95% interval of 11 to 39. Without retrieval the model named a cause 64 times: 9 were wrong, and 6 were for an incident that the corpus does not document. It still reached 92% on the `signature` incidents, where a log line such as `deadlock detected` gives the category away.
 
-**This set cannot separate the three retrieval methods by accuracy.** Hybrid is 7 points above vector and 9 above full text, and both intervals start at zero. Recall separates them more clearly: 0.93, 0.89 and 0.79.
+**This set cannot separate the three retrieval methods by accuracy.** Hybrid is 7 points above vector and 9 above full text, and both intervals start at zero. Recall puts full text behind the other two, at 0.79 against 0.89 and 0.93. Vector and hybrid differ by 4 documents of 114.
 
-**Sonnet is 12 points above Haiku for 15 times the cost**, with an interval of 0 to 25. It was also faster at the median, 2.8 s against 3.5 s, because Haiku wrote twice as many output tokens at the same effort setting: 607 per incident against 295.
+**Sonnet is 12 points above Haiku for 15 times the cost**, with an interval of 0 to 25. It was also faster at the median, 2.8 s against 3.5 s. Haiku wrote twice as many output tokens at the same effort setting, 607 per incident against 295.
 
 **The judge rejected 22 of 301 answers, and none for the wrong mechanism.** In all 22 its reason grants that the cited documents state the mechanism. What it rejects is an addition:
 
@@ -149,7 +149,7 @@ Root-cause accuracy by the way an incident is shown ([data.md](data.md) describe
 ## 7. How far to trust this
 
 - **Small.** One incident is 2.6 points of accuracy, and the interval around 67% runs from 53% to 80%. A difference under about ten points is not a finding here.
-- **Synthetic and templated.** The incidents and the documents are rendered from one catalogue by one author. About a third of the incidents carry the fault's own log line, and every variant, with or without retrieval, gets at least 92% of those right.
+- **Synthetic and templated.** The incidents and the documents are rendered from one catalogue. About a third of the incidents carry the fault's own log line, and every variant, with or without retrieval, gets at least 92% of those right.
 - **No held-out incidents.** The prompts were written by someone who could see all 50.
 - **Abstaining is the easy half.** All four variants with retrieval abstained on all 12 incidents without evidence. Half of those 12 show a log code that no document contains, so 100% here says less than it seems to.
 - **The judge is a model.** It agrees with 144 constructed controls, which are clear cases. On a borderline phrase it gave both verdicts.
