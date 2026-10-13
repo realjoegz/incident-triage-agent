@@ -75,7 +75,7 @@ With the reworded documents the three methods find 89%, 79% and 93%. The data ha
 ## Limits
 
 - **The text is templated.** The two past incidents of a fault differ in date, severity and trigger and share the rest. Real postmortems of a recurring fault are written by different people in different words.
-- **One source.** The incidents are rendered from the same catalogue as the documents, and the catalogue and the agent's prompts were written with full knowledge of each other. No second person has checked a label.
+- **One source.** The incidents are rendered from the same catalogue as the documents, and the catalogue and the agent's prompts were written with full knowledge of each other. The author has read all 50 incidents against their labels, and nobody independent of the project has.
 - **No held-out split.** All 50 incidents were visible while the prompts were written. After the five-incident sample, one sentence was added to the prompt of the no-retrieval variant so that both prompts carry the same caution about unrelated log lines. The prompt of the other four variants did not change after the sample.
 - **Some incidents give their category away.** A log line that says `deadlock detected` needs no document. The no-retrieval variant measures how far that goes.
 - **Abstaining is easier than 12 incidents suggest.** Six of the 12 show an alert and a log code that occur in no document, and four of the 12 are on a service that has no document at all.
