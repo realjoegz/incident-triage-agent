@@ -53,7 +53,10 @@ class Citation(BaseModel):
 
 
 class TriageDraft(BaseModel):
-    """What the model is asked to return. `Triage` is this after the citations were checked."""
+    """The triage of one incident."""
+
+    # This class is the output schema that the model is given, docstring and descriptions
+    # included. `Triage` below is what the agent returns after it checked the citations.
 
     model_config = ConfigDict(extra="forbid")
 

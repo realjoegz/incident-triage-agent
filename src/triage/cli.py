@@ -6,10 +6,14 @@ import json
 import sys
 from collections.abc import Sequence
 
+import uvicorn
+
 from triage import db
+from triage.api import create_app
 from triage.dataset import checks, load_corpus, load_labelled
 from triage.dataset.generate import write_files
 from triage.embeddings import SNAPSHOT_FILE, LocalEmbedder, Snapshot
+from triage.mcp_server import serve_stdio
 from triage.retrieval import incident_query
 from triage.runtime import build_embedder, open_retriever
 from triage.settings import Settings
@@ -73,6 +77,16 @@ def _search(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def _serve(settings: Settings, args: argparse.Namespace) -> int:
+    uvicorn.run(create_app(settings), host=args.host, port=args.port)
+    return 0
+
+
+def _mcp(settings: Settings, args: argparse.Namespace) -> int:
+    asyncio.run(serve_stdio(settings))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="triage", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -103,9 +117,20 @@ def build_parser() -> argparse.ArgumentParser:
     search.add_argument("--limit", type=int, default=5)
     search.set_defaults(run=_search)
 
+    serve = commands.add_parser("serve", help="run the HTTP API")
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8080)
+    serve.set_defaults(run=_serve)
+
+    commands.add_parser("mcp", help="serve the evidence tools over stdio").set_defaults(run=_mcp)
+
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
     sys.exit(args.run(Settings(), args))
+
+
+if __name__ == "__main__":
+    main()
